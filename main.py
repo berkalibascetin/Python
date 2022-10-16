@@ -11,6 +11,7 @@ if type == 1:
     print("Karenin çevresi:" + str(cevre) + " cm")
     print("Karenin alanı:" + str(alan) + " cm2")
 elif type == 2:
+    # Dikdörtgen alan ve çevre hesaplamaları
     print("Dikdörtgen Seçildi")
     LongEdge = int(input("uzun kenarı giriniz(cm):"))
     ShortEdge = int(input("kısa kenarı giriniz(cm):"))
