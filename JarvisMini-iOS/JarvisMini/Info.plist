@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Bu dosyadaki anahtarları kendi Xcode projenizin Info.plist'ine
+  (veya Xcode 15+ "Info" build ayarları sekmesine) ekleyin.
+  Her biri, ilgili izin isteği kullanıcıya gösterilirken ekranda
+  görünecek açıklama metnidir.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>JarvisMini, dokunarak başlattığınız sesli komutlarınızı duyabilmek için mikrofonunuzu kullanır. Sadece siz dinleme butonuna dokunduğunuzda aktif olur.</string>
+
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>JarvisMini, söylediklerinizi metne çevirip Gemini'ye göndermek için konuşma tanımayı kullanır.</string>
+
+    <key>NSCalendarsUsageDescription</key>
+    <string>JarvisMini, "yarın ne var" gibi istekleriniz için takvim etkinliklerinizi okur ve sizin isteğinizle yeni etkinlik/hatırlatıcı ekleyebilir.</string>
+
+    <key>NSRemindersUsageDescription</key>
+    <string>JarvisMini, hatırlatıcılarınızı okuyup sizin isteğinizle yeni hatırlatıcı ekleyebilmek için Hatırlatıcılar'a erişir.</string>
+
+    <key>NSAppleMusicUsageDescription</key>
+    <string>JarvisMini, "X'i çal" gibi isteklerinizde Apple Music'te arama yapıp oynatma başlatmak için Apple Music kütüphanenize erişir.</string>
+</dict>
+</plist>
