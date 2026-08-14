@@ -1,0 +1,14 @@
+{
+  "name": "@mission-control/ingest",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/yauzl": "^2.10.3"
+  }
+}

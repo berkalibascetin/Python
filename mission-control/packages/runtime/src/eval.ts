@@ -16,6 +16,42 @@ import type { GoldenScenario } from "./goldenSet.js";
  * tek satır konfigürasyon değişir, harness'ta hiçbir şey değişmez.
  */
 
+/**
+ * Başarısızlık taksonomisi (PHASE_1C §11).
+ *
+ * "FAILED" tek başına işe yaramaz: gerçek modelin NEDEN başarısız olduğunu
+ * bilmeden neyin düzeltilmesi gerektiği (prompt mu, tool arayüzü mi, context
+ * mi, model mi) anlaşılamaz.
+ */
+export type FailureClass =
+  | "verification_failure" // değişiklik yapıldı ama testler hâlâ kırmızı
+  | "no_change_attempted" // agent hiçbir şey değiştirmeden bitirdi
+  | "wrong_edit" // dosya değişti, testler bozuldu/düzelmedi
+  | "tool_misuse" // tool çağrıları sürekli hata döndü
+  | "budget_exhaustion"
+  | "round_limit"
+  | "thrashing"
+  | "timeout"
+  | "model_refusal"
+  | "provider_error"
+  | "sandbox_failure"
+  | "unverifiable" // doğrulanamayan proje (beklenen olabilir)
+  | "harness_error"
+  | "other";
+
+export interface ScenarioMetrics {
+  /** Model çağrısı sayısı (= tur). */
+  modelCalls: number;
+  toolCalls: number;
+  /** Hata dönen tool çağrıları — tool arayüzü sorunlarının sinyali. */
+  toolErrors: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  /** Mission'ın uçtan uca duvar-saat süresi. */
+  latencyMs: number;
+}
+
 export interface ScenarioResult {
   name: string;
   defectClass: string;
@@ -26,9 +62,14 @@ export interface ScenarioResult {
   before: { passed: number; failed: number; inconclusive: boolean };
   after: { passed: number; failed: number; inconclusive: boolean };
   filesChanged: number;
+  linesAdded: number;
+  linesRemoved: number;
   rounds: number;
   costUsd: number;
   durationMs: number;
+  metrics: ScenarioMetrics;
+  /** ok=false olduğunda sınıflandırılmış sebep. */
+  failureClass?: FailureClass;
   /** ok=false olduğunda insan-okunur açıklama. */
   note?: string;
 }
@@ -47,6 +88,14 @@ export interface EvalReport {
     totalCostUsd: number;
     meanRounds: number;
     totalDurationMs: number;
+    /** Başarılı mission başına maliyet — başarısızların maliyeti de dahil. */
+    costPerSuccessUsd: number;
+    meanLatencyMs: number;
+    meanCostUsd: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    /** Başarısızlık sınıfı → adet. Neyin düzeltileceğini bu tablo söyler. */
+    failureBreakdown: Record<string, number>;
   };
 }
 
@@ -94,8 +143,9 @@ export async function runEvalSuite(options: RunEvalOptions): Promise<EvalReport>
         failed: run.verification?.failed ?? 0,
         inconclusive: run.verification?.inconclusive ?? true,
       };
-      const filesChanged =
-        timeline.find((e) => e.kind === "artifact.created")?.facts?.changes?.files ?? 0;
+      const changes = timeline.find((e) => e.kind === "artifact.created")?.facts?.changes;
+      const filesChanged = changes?.files ?? 0;
+      const durationMs = Date.now() - started;
 
       const judgement = judge(scenario, {
         missionStatus: run.mission.status,
@@ -112,9 +162,17 @@ export async function runEvalSuite(options: RunEvalOptions): Promise<EvalReport>
         before,
         after,
         filesChanged,
+        linesAdded: changes?.added ?? 0,
+        linesRemoved: changes?.removed ?? 0,
         rounds: run.outcome.rounds,
         costUsd: run.costUsd,
-        durationMs: Date.now() - started,
+        durationMs,
+        metrics: collectMetrics(timeline, run.costUsd, durationMs),
+        ...(judgement.ok
+          ? {}
+          : {
+              failureClass: classifyFailure(scenario, run.outcome.status, after, filesChanged),
+            }),
         ...(judgement.note ? { note: judgement.note } : {}),
       };
     } catch (err) {
@@ -128,9 +186,21 @@ export async function runEvalSuite(options: RunEvalOptions): Promise<EvalReport>
         before: { passed: 0, failed: 0, inconclusive: true },
         after: { passed: 0, failed: 0, inconclusive: true },
         filesChanged: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
         rounds: 0,
         costUsd: 0,
         durationMs: Date.now() - started,
+        metrics: {
+          modelCalls: 0,
+          toolCalls: 0,
+          toolErrors: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: 0,
+          latencyMs: Date.now() - started,
+        },
+        failureClass: "harness_error",
         note: err instanceof Error ? err.message : String(err),
       };
     }
@@ -140,23 +210,107 @@ export async function runEvalSuite(options: RunEvalOptions): Promise<EvalReport>
   }
 
   const passed = results.filter((r) => r.ok).length;
+  const n = results.length;
+  const totalCost = results.reduce((sum, r) => sum + r.costUsd, 0);
+  const failureBreakdown: Record<string, number> = {};
+  for (const r of results) {
+    if (r.ok || !r.failureClass) continue;
+    failureBreakdown[r.failureClass] = (failureBreakdown[r.failureClass] ?? 0) + 1;
+  }
+
+  const mean = (pick: (r: ScenarioResult) => number) =>
+    n === 0 ? 0 : Number((results.reduce((sum, r) => sum + pick(r), 0) / n).toFixed(4));
+
   return {
     driver,
     sandboxKind: sandboxes.kind,
     startedAt,
     results,
     summary: {
-      total: results.length,
+      total: n,
       passed,
-      successRate: results.length === 0 ? 0 : passed / results.length,
-      totalCostUsd: Number(results.reduce((sum, r) => sum + r.costUsd, 0).toFixed(6)),
-      meanRounds:
-        results.length === 0
-          ? 0
-          : Number((results.reduce((sum, r) => sum + r.rounds, 0) / results.length).toFixed(2)),
+      successRate: n === 0 ? 0 : passed / n,
+      totalCostUsd: Number(totalCost.toFixed(6)),
+      meanRounds: mean((r) => r.rounds),
       totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
+      // Başarısız mission'ların maliyeti de başarılılara yüklenir: gerçek
+      // birim maliyet budur (§19.1).
+      costPerSuccessUsd: passed === 0 ? 0 : Number((totalCost / passed).toFixed(6)),
+      meanLatencyMs: Math.round(mean((r) => r.durationMs)),
+      meanCostUsd: mean((r) => r.costUsd),
+      totalInputTokens: results.reduce((sum, r) => sum + r.metrics.inputTokens, 0),
+      totalOutputTokens: results.reduce((sum, r) => sum + r.metrics.outputTokens, 0),
+      failureBreakdown,
     },
   };
+}
+
+/** Metrikler timeline'daki ÖLÇÜLMÜŞ facts'ten toplanır, agent beyanından değil. */
+function collectMetrics(
+  timeline: MissionEvent[],
+  costUsd: number,
+  latencyMs: number,
+): ScenarioMetrics {
+  let modelCalls = 0;
+  let toolCalls = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  for (const event of timeline) {
+    if (event.kind !== "execution.step" || !event.facts) continue;
+    if (event.facts.tokens) {
+      modelCalls += 1;
+      inputTokens += event.facts.tokens.input;
+      outputTokens += event.facts.tokens.output;
+    }
+    if (event.facts.commands) toolCalls += event.facts.commands.length;
+  }
+
+  return {
+    modelCalls,
+    toolCalls,
+    // Tool hatası ayrı bir event taşımıyor; komut çıkış kodlarından sayılır.
+    toolErrors: timeline
+      .filter((e) => e.kind === "execution.step")
+      .flatMap((e) => e.facts?.commands ?? [])
+      .filter((c) => c.exitCode !== 0).length,
+    inputTokens,
+    outputTokens,
+    costUsd,
+    latencyMs,
+  };
+}
+
+/**
+ * Başarısızlığı sınıflandırır. Amaç suçlu bulmak değil, hangi katmanın
+ * (prompt, tool arayüzü, context, model, sandbox) iyileştirilmesi
+ * gerektiğini gösterebilmek.
+ */
+function classifyFailure(
+  scenario: GoldenScenario,
+  outcomeStatus: string,
+  after: { failed: number; inconclusive: boolean },
+  filesChanged: number,
+): FailureClass {
+  switch (outcomeStatus) {
+    case "budget_exceeded":
+      return "budget_exhaustion";
+    case "max_rounds":
+      return "round_limit";
+    case "thrashing":
+      return "thrashing";
+    case "refused":
+      return "model_refusal";
+    case "provider_error":
+      return "provider_error";
+    default:
+      break;
+  }
+  if (after.inconclusive) return "unverifiable";
+  if (scenario.expect === "fix" && filesChanged === 0) return "no_change_attempted";
+  if (scenario.expect === "already-green" && after.failed > 0) return "wrong_edit";
+  if (after.failed > 0) return "verification_failure";
+  return "other";
 }
 
 function readVerification(event: MissionEvent | undefined) {
@@ -203,42 +357,79 @@ function judge(
   }
 }
 
+/**
+ * Başarı eşiği yorumu (PHASE_1C §10). Otomatik "ürün başarılı" kararı
+ * VERMEZ — yalnızca sonucu üç bantta konumlandırır.
+ */
+export function interpretScore(passed: number, total: number): string {
+  if (total === 0) return "no scenarios ran";
+  const ratio = passed / total;
+  if (ratio >= 0.8) return "Strong signal";
+  if (ratio >= 0.6) return "Promising but needs improvement";
+  return "Do not proceed to multi-agent yet; diagnose failure modes";
+}
+
 /** Raporun markdown hâli — CI çıktısı ve dokümantasyon için. */
 export function formatReport(report: EvalReport): string {
   const { summary } = report;
+  const isMock = report.driver.startsWith("mock");
   const pct = (summary.successRate * 100).toFixed(0);
   const lines = [
     `# Agent eval raporu`,
     ``,
-    `- **Sürücü:** \`${report.driver}\``,
-    `- **Sandbox:** \`${report.sandboxKind}\``,
-    `- **Tarih:** ${report.startedAt}`,
-    `- **Başarı:** ${summary.passed}/${summary.total} (%${pct})`,
-    `- **Toplam maliyet:** $${summary.totalCostUsd.toFixed(4)}`,
-    `- **Ortalama tur:** ${summary.meanRounds}`,
-    `- **Süre:** ${(summary.totalDurationMs / 1000).toFixed(1)}s`,
+    `## DRIVER: ${report.driver}`,
+    ``,
+    `| Metrik | Değer |`,
+    `|---|---|`,
+    `| Sonuç | **${summary.passed}/${summary.total}** (%${pct}) |`,
+    `| Değerlendirme | ${interpretScore(summary.passed, summary.total)} |`,
+    `| Sandbox | \`${report.sandboxKind}\` |`,
+    `| Ortalama tur | ${summary.meanRounds} |`,
+    `| Ortalama maliyet | $${summary.meanCostUsd.toFixed(4)} |`,
+    `| Ortalama gecikme | ${(summary.meanLatencyMs / 1000).toFixed(1)}s |`,
+    `| Toplam maliyet | $${summary.totalCostUsd.toFixed(4)} |`,
+    `| Başarılı mission başına maliyet | $${summary.costPerSuccessUsd.toFixed(4)} |`,
+    `| Token (in/out) | ${summary.totalInputTokens.toLocaleString()} / ${summary.totalOutputTokens.toLocaleString()} |`,
+    `| Tarih | ${report.startedAt} |`,
     ``,
   ];
 
-  if (report.driver.startsWith("mock")) {
+  if (isMock) {
     lines.push(
-      `> ⚠️ Bu koşu **mock sürücüyle** yapıldı. Başarı oranı harness'ın ve agent`,
-      `> döngüsünün doğruluğunu gösterir, **model yeteneğini değil**. Gerçek sayı`,
-      `> yalnızca canlı sürücüyle oluşur.`,
+      `> ⚠️ **Mock score ≠ model capability.** Bu koşu senaryo betikleriyle`,
+      `> yapıldı; başarı oranı harness'ın ve agent döngüsünün doğruluğunu`,
+      `> gösterir, modelin bu bug'ları bulabildiğini DEĞİL. Model yeteneği`,
+      `> yalnızca \`live:*\` sürücüsüyle ölçülür.`,
       ``,
     );
   }
 
   lines.push(
-    `| Senaryo | Kusur sınıfı | Beklenti | Sonuç | Testler (önce → sonra) | Dosya | Tur | Maliyet |`,
-    `|---|---|---|---|---|---|---|---|`,
+    `| Senaryo | Kusur sınıfı | Beklenti | Sonuç | Testler | Dosya | +/− | Tur | Tool | Maliyet | Süre |`,
+    `|---|---|---|---|---|---|---|---|---|---|---|`,
   );
   for (const r of report.results) {
     const before = r.before.inconclusive ? "n/a" : `${r.before.passed}/${r.before.passed + r.before.failed}`;
     const after = r.after.inconclusive ? "n/a" : `${r.after.passed}/${r.after.passed + r.after.failed}`;
+    const verdict = r.ok ? "✅" : `❌ ${r.failureClass ?? ""}`;
     lines.push(
-      `| \`${r.name}\` | ${r.defectClass} | ${r.expect} | ${r.ok ? "✅" : `❌ ${r.note ?? ""}`} | ${before} → ${after} | ${r.filesChanged} | ${r.rounds} | $${r.costUsd.toFixed(4)} |`,
+      `| \`${r.name}\` | ${r.defectClass} | ${r.expect} | ${verdict} | ${before} → ${after} | ` +
+        `${r.filesChanged} | +${r.linesAdded}/−${r.linesRemoved} | ${r.rounds} | ` +
+        `${r.metrics.toolCalls} | $${r.costUsd.toFixed(4)} | ${(r.durationMs / 1000).toFixed(1)}s |`,
     );
   }
+
+  const failed = report.results.filter((r) => !r.ok);
+  if (failed.length > 0) {
+    lines.push(``, `## Failure analysis`, ``);
+    for (const [cls, count] of Object.entries(summary.failureBreakdown).sort((a, b) => b[1] - a[1])) {
+      lines.push(`- **${cls}**: ${count}`);
+    }
+    lines.push(``, `| Senaryo | Sınıf | Ayrıntı |`, `|---|---|---|`);
+    for (const r of failed) {
+      lines.push(`| \`${r.name}\` | ${r.failureClass ?? "?"} | ${r.note ?? ""} |`);
+    }
+  }
+
   return `${lines.join("\n")}\n`;
 }

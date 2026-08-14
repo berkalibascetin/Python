@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@mission-control/core": "*",
+    "@mission-control/ingest": "*",
     "@mission-control/runtime": "*",
     "@mission-control/sandbox": "*",
     "fastify": "^5.2.0"

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { measureDirectorySize, setupWorkspaceQuota, type WorkspaceQuota } from "./quota.js";
 import {
   PathEscapeError,
   resolveLimits,
@@ -127,6 +128,7 @@ export class DockerSandbox implements Sandbox {
     private readonly dockerPath: string,
     private readonly user: string,
     private readonly network: NetworkPolicy,
+    private readonly quota?: WorkspaceQuota,
   ) {
     this.workDir = join(rootPath, "work");
     this.gitDir = join(rootPath, "git");
@@ -134,6 +136,10 @@ export class DockerSandbox implements Sandbox {
   }
 
   private readonly containerUserIsNonRoot: boolean;
+
+  get quotaMode(): "loop" | "advisory" | undefined {
+    return this.quota?.mode;
+  }
 
   private resolveInside(relPath: string): string {
     if (isAbsolute(relPath)) throw new PathEscapeError(relPath);
@@ -186,6 +192,21 @@ export class DockerSandbox implements Sandbox {
         killContainer();
       }, timeoutMs);
 
+      // Advisory modda kota çekirdek tarafından uygulanmadığı için workspace
+      // boyutunu çalışırken ölçüyoruz. Gecikmeli bir kontroldür; `loop`
+      // modunun yerini tutmaz ama sınırsız büyümeyi durdurur.
+      const diskWatcher =
+        this.quota?.mode === "advisory"
+          ? setInterval(() => {
+              void measureDirectorySize(this.workDir).then((bytes) => {
+                if (bytes > (this.quota?.limitBytes ?? Number.POSITIVE_INFINITY) && !limitHit) {
+                  limitHit = "disk";
+                  killContainer();
+                }
+              });
+            }, 1_000)
+          : undefined;
+
       const collect = (chunk: Buffer, target: "out" | "err") => {
         bytes += chunk.length;
         if (bytes > this.limits.maxOutputBytes) {
@@ -206,6 +227,7 @@ export class DockerSandbox implements Sandbox {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (diskWatcher) clearInterval(diskWatcher);
         // 137 = SIGKILL. Biz öldürmediysek çekirdek öldürmüştür (OOM).
         if (exitCode === 137 && !limitHit) limitHit = "memory";
         resolvePromise({
@@ -302,6 +324,8 @@ export class DockerSandbox implements Sandbox {
    */
   async destroy(): Promise<void> {
     await removeContainersByLabel(this.dockerPath, `mission-control.mission=${this.missionId}`);
+    // Kota bağlaması çözülmeden dizin silinirse host'ta imaj sızıntısı kalır.
+    await this.quota?.release().catch(() => {});
     await rm(this.rootPath, { recursive: true, force: true });
   }
 }
@@ -356,8 +380,17 @@ export class DockerSandboxProvider implements SandboxProvider {
     const root = await mkdtemp(join(this.baseDir, `mc-${options.missionId.slice(0, 8)}-`));
     const workDir = join(root, "work");
     const gitDir = join(root, "git");
-    await mkdir(workDir, { recursive: true });
+    const limits = resolveLimits(options.limits);
     await mkdir(gitDir, { recursive: true });
+
+    // Kota, workspace'in ÜZERİNE kurulur: container'ın yazabildiği tek kalıcı
+    // alan budur ve host diskini burası doldurabilir. İmaj dosyası bağlama
+    // noktasının dışında (root altında) durur ki umount sonrası silinebilsin.
+    const quota = await setupWorkspaceQuota({
+      mountPoint: workDir,
+      imageDir: join(root, "quota"),
+      limitBytes: limits.workspaceMb * 1024 * 1024,
+    });
 
     if (options.sourceDir) {
       await cp(options.sourceDir, workDir, { recursive: true });
@@ -373,12 +406,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     const sandbox = new DockerSandbox(
       randomUUID(),
       root,
-      resolveLimits(options.limits),
+      limits,
       options.missionId,
       this.image,
       this.dockerPath,
       user,
       network,
+      quota,
     );
 
     await initHostGit(gitDir, workDir);

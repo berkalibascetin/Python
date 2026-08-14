@@ -7,7 +7,7 @@ import {
   LocalSandboxProvider,
   type SandboxProvider,
 } from "@mission-control/sandbox";
-import { formatReport, runEvalSuite } from "./eval.js";
+import { formatReport, interpretScore, runEvalSuite } from "./eval.js";
 import { GOLDEN_SET } from "./goldenSet.js";
 
 /**
@@ -17,10 +17,15 @@ import { GOLDEN_SET } from "./goldenSet.js";
  * betikleri. Rapor hangisiyle koşulduğunu her zaman en üstte yazar.
  */
 
-const REPORT_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../eval-report.md",
-);
+const REPORT_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/**
+ * Mock ve live raporları AYRI dosyalara yazılır: birbirinin üstüne yazmak,
+ * "10/10" gibi bir mock sonucunun model yeteneği sanılmasına yol açardı.
+ */
+function reportPathFor(driver: string): string {
+  return join(REPORT_DIR, driver.startsWith("live") ? "eval-report-live.md" : "eval-report.md");
+}
 
 async function main(): Promise<void> {
   const live = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -60,14 +65,19 @@ async function main(): Promise<void> {
   });
 
   const markdown = formatReport(report);
-  await writeFile(REPORT_PATH, markdown, "utf8");
+  const reportPath = reportPathFor(driver);
+  await writeFile(reportPath, markdown, "utf8");
 
   const { summary } = report;
   console.log(
     `\n${summary.passed}/${summary.total} scenarios met their expectation ` +
       `(${(summary.successRate * 100).toFixed(0)}%), total $${summary.totalCostUsd.toFixed(4)}.`,
   );
-  console.log(`Report written to ${REPORT_PATH}`);
+  console.log(`Assessment: ${interpretScore(summary.passed, summary.total)}`);
+  if (Object.keys(summary.failureBreakdown).length > 0) {
+    console.log(`Failure classes: ${JSON.stringify(summary.failureBreakdown)}`);
+  }
+  console.log(`Report written to ${reportPath}`);
 
   // Bir senaryonun beklentisini karşılamaması CI'da görünür olmalı.
   process.exit(summary.passed === summary.total ? 0 : 1);

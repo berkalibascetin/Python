@@ -138,7 +138,11 @@ describe("eval harness", () => {
       makeGateway: gatewayFor,
     });
     const markdown = formatReport(report);
-    expect(markdown).toContain("mock sürücüyle");
-    expect(markdown).toContain("model yeteneğini değil");
+    expect(markdown).toContain("DRIVER: mock");
+    // Uyarı metni PHASE_1C §8'in istediği ifadeye güncellendi; sınanan
+    // özellik aynı: mock sonucu model yeteneği sanılmamalı.
+    expect(markdown).toContain("Mock score ≠ model capability");
+    // Satır sonunu aşmayan bir parça: markdown alıntı bloğu metni sarmalıyor.
+    expect(markdown).toContain("Model yeteneği");
   }, 60_000);
 });

@@ -204,13 +204,17 @@ describe.skipIf(!dockerReady)("adversarial: izolasyonlu Docker sandbox", () => {
 
   it("(11) süre aşımı container'ı öldürür", async () => {
     const sb = await sandbox();
-    const res = await sb.exec("python3", ["-c", "import time; time.sleep(60)"], {
+    // Komut 300 saniye uyumak ister; 3 saniyede öldürülmeli.
+    const res = await sb.exec("python3", ["-c", "import time; time.sleep(300)"], {
       timeoutMs: 3_000,
     });
     expect(res.timedOut).toBe(true);
     expect(res.limitHit).toBe("time");
-    expect(res.durationMs).toBeLessThan(30_000);
-  }, 120_000);
+    // Öldürmenin GERÇEKTEN işe yaradığını, uykunun kendiliğinden bitmesinden
+    // ayırt edecek kadar geniş bir sınır: paralel yük altında container
+    // başlatma/öldürme gecikmesi değişir, ama 300 saniyeye yaklaşmaz.
+    expect(res.durationMs).toBeLessThan(120_000);
+  }, 180_000);
 
   it("(12) devasa stdout belleği doldurmaz, limit olarak kesilir", async () => {
     const sb = await provider.create({

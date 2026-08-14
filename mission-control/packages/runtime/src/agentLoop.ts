@@ -1,6 +1,7 @@
 import {
   agentEventInput,
   BudgetExceededError,
+  redactSecrets,
   type BudgetTracker,
   type EventStore,
 } from "@mission-control/core";
@@ -191,7 +192,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentOutc
             parentId: taskId,
             actor: { type: "agent", role, model: modelId },
             kind: "agent.status",
-            aiSummary: response.text.slice(0, 500),
+            // Model çıktısı kalıcı kayda girmeden önce sır taraması: anahtar
+            // sisteme başka bir yoldan girdiyse timeline'a yazılmasın (§7).
+            aiSummary: redactSecrets(response.text).slice(0, 500),
           }),
         );
       }

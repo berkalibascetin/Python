@@ -21,7 +21,7 @@ export interface ExecResult {
   limitHit?: ResourceLimitKind;
 }
 
-export type ResourceLimitKind = "time" | "memory" | "output" | "process";
+export type ResourceLimitKind = "time" | "memory" | "output" | "process" | "disk";
 
 export interface ExecOptions {
   timeoutMs?: number;
@@ -62,6 +62,8 @@ export interface ResourceLimits {
   maxOutputBytes: number;
   /** Yazılabilir /tmp boyutu (root dosya sistemi salt-okunur olduğu için gerekli). */
   tmpfsMb: number;
+  /** Workspace disk kotası — güvenilmeyen kodun host diskini doldurmasını engeller. */
+  workspaceMb: number;
 }
 
 export const DEFAULT_LIMITS: ResourceLimits = {
@@ -71,6 +73,7 @@ export const DEFAULT_LIMITS: ResourceLimits = {
   execTimeoutMs: 120_000,
   maxOutputBytes: 2_000_000,
   tmpfsMb: 64,
+  workspaceMb: 512,
 };
 
 export interface CreateSandboxOptions {
@@ -88,6 +91,12 @@ export interface Sandbox {
   /** Workspace kökünün host üzerindeki mutlak yolu (yalnızca platform kodu kullanır). */
   readonly rootPath: string;
   readonly limits: ResourceLimits;
+  /**
+   * Disk kotasının gerçekten çekirdek tarafından mı uygulandığı, yoksa
+   * gecikmeli bir ölçüm mü olduğu. Raporlarda dürüstçe gösterilir.
+   * `undefined` = bu sağlayıcı workspace kotası uygulamıyor.
+   */
+  readonly quotaMode?: "loop" | "advisory" | undefined;
 
   /** Allowlist kontrolü ÇAĞIRANIN sorumluluğudur; sandbox verileni çalıştırır. */
   exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
