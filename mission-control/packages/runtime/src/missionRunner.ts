@@ -173,9 +173,13 @@ export async function runMission(options: MissionRunOptions): Promise<MissionRun
       mission = transition(mission, "completed");
     } else {
       // Faz 1a'da Explain/Fix yok: durum dürüstçe raporlanır, "başarılı" denmez.
-      const reason = !green
-        ? `checks still failing (${after.failed} failed)`
-        : (outcome.reason ?? outcome.status);
+      // "Hiçbir şey kontrol edilemedi" ile "0 test başarısız" aynı şey değildir;
+      // ikisini aynı cümleyle raporlamak kullanıcıyı yanıltır.
+      const reason = after.inconclusive
+        ? "no test suite could be run, so the change is unverified"
+        : after.failed > 0
+          ? `checks still failing (${after.failed} failed)`
+          : (outcome.reason ?? outcome.status);
       await events.append({
         missionId,
         parentId: null,

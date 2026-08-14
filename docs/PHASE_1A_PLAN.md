@@ -74,14 +74,28 @@ bütçe rezerve (çağrı ÖNCESİ) → model çağrısı → gerçek maliyetle 
 
 `detectVerification` proje tipini dosyalardan tespit eder (uydurmaz; bulamazsa `inconclusive`). Sonuç çıkış kodundan ve özet satırından **ölçülür**, agent beyanından değil. Değişim sayıları `git diff --numstat`'tan gelir; derleme/test artefaktları (`__pycache__`, `node_modules`, …) `.git/info/exclude` ile dışarıda tutulur — "14 dosya değişti" kullanıcıya gösterilen bir gerçek, çöp sayımı değil.
 
-## 8. Test durumu (49 test, tümü yeşil)
+## 8. Test ve ölçüm durumu (66 test yeşil, 10/10 senaryo)
 
 | Katman | Kapsam |
 |---|---|
-| Unit | maliyet (cache dahil), bilinmeyen fiyat reddi, izin matrisi, metakarakter reddi, yol hapsi, süre limiti, diffStat |
+| Unit | maliyet (cache dahil), bilinmeyen fiyat reddi, izin matrisi, metakarakter reddi, yol hapsi, süre limiti, diffStat, verification tespiti + çıktı parse'ı |
 | Integration | tool kullanıp tamamlama, bütçe tavanı (çağrı yapılmadan), tur limiti, thrashing, refusal, yetkisiz çağrı, retry tükenmesi |
-| E2E | golden fixture: baseline 2/2 kırmızı → agent → 4/0 yeşil, diff ölçülmüş; **ve** agent düzeltemezse mission'ın "başarılı" ilan edilmediği senaryo |
+| E2E | golden fixture: baseline kırmızı → agent → yeşil, diff ölçülmüş; **ve** agent düzeltemezse mission'ın "başarılı" ilan edilmediği senaryo |
+| Eval harness | kendi testleri var: düzeltmeyen / hiçbir şey yapmayan / çalışan projeyi bozan agent'ları **yakaladığı** kanıtlı — her şeye "✅" diyen bir eval, hiç eval olmamasından beterdir |
 | Canlı smoke | `ANTHROPIC_API_KEY` varsa gerçek model; yoksa **atlanır** (sessizce "geçti" sayılmaz) |
+
+### Golden set (10 senaryo)
+
+`fixtures/golden/` altında, her biri ayrı bir kusur sınıfı: eksik anahtar koruması,
+sınır aritmetiği, ters karşılaştırma, eksik `return`, kusurun testin işaret ettiğinden
+başka dosyada olması, yutulan istisna, paylaşılan mutable varsayılan, **kusursuz proje**
+(negatif kontrol), npm/node verification yolu, ve test seti olmayan proje.
+
+`npm run eval` hepsini koşar ve `eval-report.md` üretir. Rapor sürücüyü en üstte
+etiketler. Mock koşusu: 10/10, ortalama 3.9 tur, toplam $0.2457 (mock token sayıları).
+
+**Bu oran model yeteneğinin ölçüsü değildir** — harness'ın ve agent döngüsünün gerçek
+projeler üzerinde doğru çalıştığını gösterir. Gerçek sayı canlı sürücüyle oluşur.
 
 ## 9. Uygulamada plandan sapmalar (ve gerekçeleri)
 
@@ -92,10 +106,19 @@ bütçe rezerve (çağrı ÖNCESİ) → model çağrısı → gerçek maliyetle 
 
 ## 10. Faz 1a'nın kapanış durumu ve devam kriteri
 
-Tamamlanma kriteri **karşılandı**: golden fixture'daki bug, proje seçimi → sandbox → agent → verification → diff akışıyla düzeliyor; timeline gerçek ölçülmüş facts gösteriyor; maliyet kaydı doğru (mock koşusunda $0.0315).
+Faz 1a **kapandı**. Tamamlanma kriteri karşılandı ve üzerine ölçüm altyapısı kuruldu:
 
-**Henüz cevaplanmayan asıl soru:** gerçek modelin bu görevleri hangi başarı oranıyla tamamladığı. Mock koşusu döngünün doğruluğunu kanıtlar, model yeteneğini değil. Faz 1b'ye geçmeden önce:
+- Golden set 10 senaryoya çıktı; her biri farklı bir kusur sınıfı, ikisi negatif kontrol.
+- Eval harness (`npm run eval`) senaryoları koşuyor, metrikleri topluyor, raporu sürücü etiketiyle yazıyor.
+- Sürücü enjekte edilebilir: canlı ölçüme geçmek **tek satır konfigürasyon**, harness'ta değişiklik yok.
+- 66 test yeşil; harness'ın yanlış sonucu yakaladığı da test edilmiş.
 
-1. Golden set 10 senaryoya çıkarılmalı (§21'in açık maddesi).
-2. `ANTHROPIC_API_KEY` ile canlı ölçüm yapılmalı; öneri eşiği: **10 senaryonun ≥6'sı** gerçek modelle yeşile dönüyorsa devam.
-3. İzolasyonlu sandbox (Docker adapter) — kullanıcı projesi kabul edilmeden önce.
+**Henüz cevaplanmayan asıl soru değişmedi:** gerçek modelin başarı oranı. Mock koşusu döngünün doğruluğunu kanıtlar, model yeteneğini değil.
+
+Faz 1b'ye geçiş için sırayla:
+
+1. **Canlı ölçüm.** `ANTHROPIC_API_KEY=... npm run eval` — tek komut, kod değişikliği yok. Önerilen devam eşiği: **10 senaryonun ≥6'sı** gerçek modelle beklentisini karşılıyorsa devam. Eşik tutmazsa sorun modelde değil büyük olasılıkla context assembler ve system prompt'tadır; önce onlar iterasyona girer.
+2. **İzolasyonlu sandbox** (Docker adapter) — kullanıcı projesi kabul edilmeden önce, §5'teki risk beyanının gereği.
+3. **GitHub App + server-side git + PR** — asıl Faz 1b işi.
+
+Golden set'in genişletilmesi süreklidir: canlı koşuda başarısız olan her görev sınıfı yeni bir senaryo olarak sete girer (§16'daki "eval-driven development").

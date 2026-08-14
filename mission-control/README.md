@@ -11,9 +11,9 @@ packages/core      # alan-bağımsız çekirdek: event şeması v1, mission stat
 packages/gateway   # Model Gateway: rol alias'ı → adapter, maliyet muhasebesi, Anthropic + mock adapter
 packages/sandbox   # SandboxProvider soyutlaması + LocalProcessSandbox (yalnızca geliştirme)
 packages/tools     # tool registry + rol izin matrisi (repo.read / repo.write / shell.run)
-packages/runtime   # agent tool-use döngüsü, verification runner, mission orchestrator
+packages/runtime   # agent tool-use döngüsü, verification runner, mission orchestrator, eval harness
 apps/api           # Fastify + SSE + iki katmanlı timeline arayüzü
-fixtures/golden/   # bilinen bug'lı ölçüm projeleri
+fixtures/golden/   # 10 senaryoluk golden set (bilinen kusur sınıfları)
 ```
 
 ### Taşıyıcı sözleşmeler
@@ -29,9 +29,15 @@ fixtures/golden/   # bilinen bug'lı ölçüm projeleri
 cd mission-control
 npm install
 npm run typecheck
-npm test          # 49 test (unit + integration + E2E), gerçek model gerektirmez
+npm test          # 66 test (unit + integration + E2E), gerçek model gerektirmez
+npm run eval      # golden set'i koşar, eval-report.md üretir
 npm run dev       # http://localhost:3000
 ```
+
+`npm run eval` 10 senaryoluk golden set'i çalıştırır ve başarı oranı, tur sayısı,
+maliyet ve süreyi raporlar. Rapor sürücüyü (`mock` / `live:<model>`) en üstte
+belirtir — **mock sürücüyle çıkan oran harness'ın doğruluğunu gösterir, model
+yeteneğini değil.** Senaryo listesi: [`fixtures/golden/README.md`](fixtures/golden/README.md).
 
 Arayüzde bir proje ve hedef seçip Start'a basın. Sağ üstteki rozet hangi modda olduğunuzu gösterir:
 

@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "tsx apps/api/src/server.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/gateway/tsconfig.json --noEmit && tsc -p packages/sandbox/tsconfig.json --noEmit && tsc -p packages/tools/tsconfig.json --noEmit && tsc -p packages/runtime/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit"
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/gateway/tsconfig.json --noEmit && tsc -p packages/sandbox/tsconfig.json --noEmit && tsc -p packages/tools/tsconfig.json --noEmit && tsc -p packages/runtime/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit",
+    "eval": "tsx packages/runtime/src/evalCli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
