@@ -26,6 +26,17 @@
     padding: .6rem 1rem; border-radius: 8px; border: none;
     background: var(--accent); color: #0b0d12; font-weight: 600; cursor: pointer;
   }
+  select {
+    padding: .6rem .5rem; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text);
+  }
+  .badge {
+    font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+    padding: .15em .5em; border-radius: 5px; vertical-align: middle;
+    background: var(--chip); color: var(--muted); border: 1px solid var(--border);
+  }
+  .badge.live { color: var(--ok); border-color: var(--ok); }
+  .badge.mock { color: var(--warn); border-color: var(--warn); }
   .toggle { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; margin-bottom: 1rem; }
   #phase { font-weight: 600; color: var(--accent); margin-bottom: 1rem; min-height: 1.4em; }
   .card {
@@ -52,11 +63,12 @@
 </style>
 </head>
 <body>
-  <h1>Mission Control <span style="color:var(--muted);font-weight:400">— Faz 0 demo</span></h1>
+  <h1>Mission Control <span id="mode-badge" class="badge">…</span></h1>
 
   <form id="goal-form">
     <input id="goal" type="text" placeholder="What do you want to accomplish?"
-           value="Fix the authentication problem." />
+           value="Fix the failing tests." />
+    <select id="project" title="Project to work on"></select>
     <button type="submit">Start</button>
   </form>
   <label class="toggle">
@@ -84,6 +96,19 @@
   document.getElementById("advanced").addEventListener("change", (e) =>
     document.body.classList.toggle("advanced", e.target.checked));
 
+  // Mod rozeti: mock ile üretilmiş bir timeline asla gerçek model çalışmış
+  // gibi sunulmaz — ürünün güven sözleşmesi bunu yasaklar.
+  fetch("/config").then((r) => r.json()).then((cfg) => {
+    const badge = document.getElementById("mode-badge");
+    badge.textContent = cfg.mode === "live" ? `live · ${cfg.model}` : "mock model";
+    badge.className = `badge ${cfg.mode}`;
+    badge.title = cfg.mode === "live"
+      ? "Real model calls are being made and billed."
+      : "No API key configured — a scripted stand-in model is driving the agent loop.";
+    const select = document.getElementById("project");
+    select.innerHTML = cfg.projects.map((p) => `<option value="${p}">${p}</option>`).join("");
+  });
+
   let source = null;
   document.getElementById("goal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -91,7 +116,10 @@
     if (source) source.close();
     const res = await fetch("/missions", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ goal: document.getElementById("goal").value }),
+      body: JSON.stringify({
+        goal: document.getElementById("goal").value,
+        project: document.getElementById("project").value,
+      }),
     });
     const { missionId } = await res.json();
     source = new EventSource(`/missions/${missionId}/stream`);

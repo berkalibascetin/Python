@@ -1,32 +1,56 @@
-# Mission Control — Faz 0 iskeleti
+# Mission Control
 
-AI Agent Workspace / Mission Control ürününün Faz 0 dikeyi. Plan: [`docs/MASTER_PLAN.md`](../docs/MASTER_PLAN.md).
+AI Agent Workspace / Mission Control. Plan: [`docs/MASTER_PLAN.md`](../docs/MASTER_PLAN.md) · Faz 1a: [`docs/PHASE_1A_PLAN.md`](../docs/PHASE_1A_PLAN.md)
 
-**Faz 0 tamamlanma kriteri (plan §17):** "sahte agent bir event yazar, timeline'da canlı görünür" — bu repo tam olarak bunu yapar: model çağrısı yok, gerçek altyapı (Postgres/Redis) yok; event sözleşmesi, state machine, bütçe devre kesici ve SSE→timeline dikeyi var. Faz 1a'da sahte Developer adımının içi gerçek agent döngüsüyle değişir; event sözleşmesi aynı kalır.
+**Durum: Faz 1a tamamlandı.** Bir agent, sandbox'a alınmış gerçek bir projede bug'ı bulup düzeltiyor, testleri koşuyor ve tüm süreç ölçülmüş gerçeklerle timeline'a akıyor.
 
 ## Yapı
 
 ```
-packages/core   # alan-bağımsız çekirdek (plan §11.4): event şeması v1, mission
-                # state machine, budget devre kesici + fix-round/thrashing guard
-apps/api        # Fastify: POST /missions (demo mission başlatır),
-                # GET /missions/:id/events, GET /missions/:id/stream (SSE),
-                # / (iki katmanlı timeline demo sayfası)
+packages/core      # alan-bağımsız çekirdek: event şeması v1, mission state machine, bütçe devre kesici
+packages/gateway   # Model Gateway: rol alias'ı → adapter, maliyet muhasebesi, Anthropic + mock adapter
+packages/sandbox   # SandboxProvider soyutlaması + LocalProcessSandbox (yalnızca geliştirme)
+packages/tools     # tool registry + rol izin matrisi (repo.read / repo.write / shell.run)
+packages/runtime   # agent tool-use döngüsü, verification runner, mission orchestrator
+apps/api           # Fastify + SSE + iki katmanlı timeline arayüzü
+fixtures/golden/   # bilinen bug'lı ölçüm projeleri
 ```
 
-Çekirdek sözleşmeler:
+### Taşıyıcı sözleşmeler
 
-- **Event şeması v1** (`packages/core/src/events.ts`): `aiSummary` (agent beyanı, doğrulanmaz) ile `facts` (yalnızca platform kodu yazar: dosya/satır/komut/süre/maliyet/test) ayrıdır. Agent kaynaklı event üretmenin tek yolu `agentEventInput()`tur ve `facts` alanını tip + çalışma anı düzeyinde ayıklar.
-- **Mission state machine** (`mission.ts`): `created → planning → awaiting_approval → running → verifying → (recovering → running → verifying)* → completed`; geçersiz geçiş hatadır.
-- **Bütçe devre kesici** (`budget.ts`): her harcama öncesi rezervasyon, sonrası mutabakat; tavan aşımı harcamadan önce engellenir. `FixRoundGuard` tur limiti + aynı hata imzasının tekrarında thrashing tespiti yapar.
+- **Event şeması v1** (`packages/core/src/events.ts`): `aiSummary` (agent beyanı, doğrulanmaz) ile `facts` (yalnızca platform kodu yazar: dosya/satır/komut/süre/maliyet/test) ayrıdır. Agent kaynaklı event üretmenin tek yolu `agentEventInput()`tur ve `facts`'i tip + çalışma anı düzeyinde ayıklar.
+- **Provider bağımsızlığı** (`packages/gateway`): çekirdek kod hiçbir yerde model ID'si görmez; roller `"developer-default"` gibi alias'lara bağlanır.
+- **İzinler tool katmanında** (`packages/tools/src/policy.ts`): prompt'ta değil. Yetkisiz tool modele hiç gösterilmez.
+- **Limitler kodda** (`packages/runtime/src/agentLoop.ts`): bütçe çağrıdan önce rezerve edilir, tur/süre/thrashing sınırları modelden bağımsız uygulanır.
 
 ## Çalıştırma
 
 ```bash
 cd mission-control
 npm install
-npm test        # core testleri (vitest)
-npm run dev     # http://localhost:3000 — hedef yaz, Start'a bas, timeline'ı izle
+npm run typecheck
+npm test          # 49 test (unit + integration + E2E), gerçek model gerektirmez
+npm run dev       # http://localhost:3000
 ```
 
-Demo mission, plan §6 referans akışını oynatır: plan → onay → değişiklik → verification kırmızı → cross-model Explain → fix turu → verification yeşil → teslim. "Advanced view" kutusu §5.4'teki opt-in detay görünümünü açar (model adları, token, maliyet).
+Arayüzde bir proje ve hedef seçip Start'a basın. Sağ üstteki rozet hangi modda olduğunuzu gösterir:
+
+| Rozet | Anlamı |
+|---|---|
+| `mock model` | `ANTHROPIC_API_KEY` yok — agent döngüsünü senaryolu bir vekil model sürüyor |
+| `live · <model>` | Gerçek model çağrıları yapılıyor ve ücretlendiriliyor |
+
+Gerçek modelle çalıştırmak için:
+
+```bash
+ANTHROPIC_API_KEY=... npm run dev     # arayüz
+ANTHROPIC_API_KEY=... npm test        # canlı smoke testi de koşar (yoksa atlanır)
+```
+
+## ⚠️ Sandbox izolasyonu
+
+`LocalProcessSandbox` komutları host üzerinde normal bir çocuk süreç olarak çalıştırır. **Ağ izolasyonu, dosya sistemi izolasyonu ve kaynak sınırı yoktur**; tek koruma workspace'e yol hapsi ve süre limitidir. Bu yüzden yalnızca `fixtures/golden/` altındaki güvenilen projeler çalıştırılabilir ve arayüz keyfi proje yüklemesine izin vermez. Kullanıcı projesi kabul edilmeden önce izolasyonlu bir sandbox (Docker / E2B) zorunludur — bkz. `docs/PHASE_1A_PLAN.md` §5 ve §9.
+
+## Sırada ne var (Faz 1b)
+
+Golden set'in 10 senaryoya çıkarılması ve gerçek modelle başarı oranı ölçümü, izolasyonlu sandbox, ardından GitHub App + server-side git + PR açma.
