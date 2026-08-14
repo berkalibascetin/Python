@@ -1,0 +1,10 @@
+{
+  "name": "@mission-control/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@mission-control/core": "*",
+    "fastify": "^5.2.0"
+  }
+}

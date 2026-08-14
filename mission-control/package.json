@@ -1,0 +1,21 @@
+{
+  "name": "mission-control",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Agent Workspace / Mission Control — Faz 0 iskeleti (bkz. docs/MASTER_PLAN.md)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "tsx apps/api/src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
