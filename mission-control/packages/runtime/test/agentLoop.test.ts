@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 async function harness(steps: MockStep[], overrides: Partial<AgentLoopOptions> = {}) {
-  const sandbox = await provider.create({ missionId: "loop-test" });
+  const sandbox = await provider.create({ missionId: "loop-test", trust: "trusted" });
   created.push(sandbox);
   await sandbox.writeFile("app.py", "def add(a, b):\n    return a - b\n");
 

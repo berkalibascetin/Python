@@ -2,6 +2,11 @@ import { readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AnthropicAdapter, MockAdapter, ModelGateway, type MockStep } from "@mission-control/gateway";
+import {
+  DockerSandboxProvider,
+  LocalSandboxProvider,
+  type SandboxProvider,
+} from "@mission-control/sandbox";
 
 /**
  * Çalışma modu konfigürasyonu.
@@ -66,6 +71,32 @@ export function buildGateway(): ModelGateway {
   const adapter =
     runMode === "live" ? new AnthropicAdapter(modelId) : new MockAdapter(MOCK_SCRIPT, modelId);
   return ModelGateway.fromRecord({ "developer-default": adapter });
+}
+
+/**
+ * Sandbox sağlayıcısı seçimi (PHASE_1B §13).
+ *
+ * İzolasyonlu sağlayıcı varsa her zaman o kullanılır. Yoksa yalnızca
+ * `fixtures/golden` altındaki KENDİ fixture'larımız çalıştırılabilir ve bu
+ * durum arayüzde açıkça gösterilir — sessizce izolasyonsuz çalıştırmaya
+ * düşmek, ürünün güvenlik iddiasını çürütürdü.
+ */
+export interface SandboxSelection {
+  provider: SandboxProvider;
+  isolated: boolean;
+  /** İzolasyon yoksa sebebi — kullanıcıya ve loglara gösterilir. */
+  reason?: string;
+}
+
+export async function selectSandbox(): Promise<SandboxSelection> {
+  const docker = new DockerSandboxProvider();
+  const availability = await docker.isAvailable();
+  if (availability.ok) return { provider: docker, isolated: true };
+  return {
+    provider: new LocalSandboxProvider(),
+    isolated: false,
+    reason: availability.detail,
+  };
 }
 
 /** PROJECTS_ROOT altındaki çalıştırılabilir projeler. */

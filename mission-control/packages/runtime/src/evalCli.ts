@@ -2,7 +2,11 @@ import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AnthropicAdapter, MockAdapter, ModelGateway } from "@mission-control/gateway";
-import { LocalSandboxProvider } from "@mission-control/sandbox";
+import {
+  DockerSandboxProvider,
+  LocalSandboxProvider,
+  type SandboxProvider,
+} from "@mission-control/sandbox";
 import { formatReport, runEvalSuite } from "./eval.js";
 import { GOLDEN_SET } from "./goldenSet.js";
 
@@ -30,11 +34,14 @@ async function main(): Promise<void> {
   }
 
   const driver = live ? `live:${model}` : "mock";
-  console.log(`Running ${scenarios.length} scenario(s) with driver "${driver}"…\n`);
+  const sandboxes = await pickSandbox();
+  console.log(
+    `Running ${scenarios.length} scenario(s) — driver "${driver}", sandbox "${sandboxes.kind}"…\n`,
+  );
 
   const report = await runEvalSuite({
     scenarios,
-    sandboxes: new LocalSandboxProvider(),
+    sandboxes,
     driver,
     makeGateway: (scenario) =>
       ModelGateway.fromRecord({
@@ -64,6 +71,20 @@ async function main(): Promise<void> {
 
   // Bir senaryonun beklentisini karşılamaması CI'da görünür olmalı.
   process.exit(summary.passed === summary.total ? 0 : 1);
+}
+
+/**
+ * İzolasyonlu sandbox varsa onu kullan. Golden set bizim fixture'larımızdan
+ * oluştuğu için izolasyonsuz da koşabilir; ama Docker mevcutken onu kullanmak
+ * eval'i üretim yoluna daha yakın kılar. `MC_EVAL_SANDBOX=local` ile zorlanabilir.
+ */
+async function pickSandbox(): Promise<SandboxProvider> {
+  if (process.env.MC_EVAL_SANDBOX === "local") return new LocalSandboxProvider();
+  const docker = new DockerSandboxProvider();
+  const availability = await docker.isAvailable();
+  if (availability.ok) return docker;
+  console.log(`(docker unavailable: ${availability.detail} — falling back to local sandbox)`);
+  return new LocalSandboxProvider();
 }
 
 main().catch((err) => {

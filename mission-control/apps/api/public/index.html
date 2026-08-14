@@ -63,7 +63,10 @@
 </style>
 </head>
 <body>
-  <h1>Mission Control <span id="mode-badge" class="badge">…</span></h1>
+  <h1>Mission Control
+    <span id="mode-badge" class="badge">…</span>
+    <span id="sandbox-badge" class="badge">…</span>
+  </h1>
 
   <form id="goal-form">
     <input id="goal" type="text" placeholder="What do you want to accomplish?"
@@ -105,6 +108,16 @@
     badge.title = cfg.mode === "live"
       ? "Real model calls are being made and billed."
       : "No API key configured — a scripted stand-in model is driving the agent loop.";
+    // İzolasyon durumu da gizlenmez: izolasyonsuz koşan bir sistem bunu
+    // kullanıcıya söylemek zorundadır.
+    const sandboxBadge = document.getElementById("sandbox-badge");
+    sandboxBadge.textContent = cfg.isolated ? `isolated · ${cfg.sandbox}` : "no isolation";
+    sandboxBadge.className = `badge ${cfg.isolated ? "live" : "mock"}`;
+    sandboxBadge.title = cfg.isolated
+      ? "Untrusted project code runs in an isolated container with no network."
+      : `No isolating sandbox available (${cfg.sandboxReason ?? "unknown"}). ` +
+        "Only the bundled golden fixtures can run; untrusted projects are refused.";
+
     const select = document.getElementById("project");
     select.innerHTML = cfg.projects.map((p) => `<option value="${p}">${p}</option>`).join("");
   });

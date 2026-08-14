@@ -35,6 +35,7 @@ describe.skipIf(!hasKey)("canlı smoke: gerçek model golden fixture'ı düzelti
           "developer-default": new AnthropicAdapter(model),
         }),
         sandboxes: new LocalSandboxProvider(),
+      trust: "trusted",
         events,
         budgetUsd: 1,
         maxRounds: 12,

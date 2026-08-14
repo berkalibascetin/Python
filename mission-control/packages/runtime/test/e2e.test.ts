@@ -69,6 +69,7 @@ describe("E2E: golden fixture mission", () => {
         "developer-default": new MockAdapter(FIXING_STEPS, "claude-sonnet-5"),
       }),
       sandboxes: new LocalSandboxProvider(),
+      trust: "trusted",
       events,
     });
 
@@ -126,6 +127,7 @@ describe("E2E: golden fixture mission", () => {
         ),
       }),
       sandboxes: new LocalSandboxProvider(),
+      trust: "trusted",
       events,
     });
 

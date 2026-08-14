@@ -1,15 +1,15 @@
 # Mission Control
 
-AI Agent Workspace / Mission Control. Plan: [`docs/MASTER_PLAN.md`](../docs/MASTER_PLAN.md) · Faz 1a: [`docs/PHASE_1A_PLAN.md`](../docs/PHASE_1A_PLAN.md)
+AI Agent Workspace / Mission Control. Plan: [`docs/MASTER_PLAN.md`](../docs/MASTER_PLAN.md) · [Faz 1a](../docs/PHASE_1A_PLAN.md) · [Faz 1b](../docs/PHASE_1B_PLAN.md)
 
-**Durum: Faz 1a tamamlandı.** Bir agent, sandbox'a alınmış gerçek bir projede bug'ı bulup düzeltiyor, testleri koşuyor ve tüm süreç ölçülmüş gerçeklerle timeline'a akıyor.
+**Durum: Faz 1b tamamlandı.** Bir agent, **izole bir container'da** çalışan güvenilmeyen bir projede bug'ı bulup düzeltiyor, testleri koşuyor ve tüm süreç ölçülmüş gerçeklerle timeline'a akıyor.
 
 ## Yapı
 
 ```
 packages/core      # alan-bağımsız çekirdek: event şeması v1, mission state machine, bütçe devre kesici
 packages/gateway   # Model Gateway: rol alias'ı → adapter, maliyet muhasebesi, Anthropic + mock adapter
-packages/sandbox   # SandboxProvider soyutlaması + LocalProcessSandbox (yalnızca geliştirme)
+packages/sandbox   # SandboxProvider soyutlaması + DockerSandbox (izole) + LocalProcessSandbox (dev)
 packages/tools     # tool registry + rol izin matrisi (repo.read / repo.write / shell.run)
 packages/runtime   # agent tool-use döngüsü, verification runner, mission orchestrator, eval harness
 apps/api           # Fastify + SSE + iki katmanlı timeline arayüzü
@@ -29,7 +29,7 @@ fixtures/golden/   # 10 senaryoluk golden set (bilinen kusur sınıfları)
 cd mission-control
 npm install
 npm run typecheck
-npm test          # 66 test (unit + integration + E2E), gerçek model gerektirmez
+npm test          # 108 test (unit + integration + E2E + adversarial), gerçek model gerektirmez
 npm run eval      # golden set'i koşar, eval-report.md üretir
 npm run dev       # http://localhost:3000
 ```
@@ -53,10 +53,28 @@ ANTHROPIC_API_KEY=... npm run dev     # arayüz
 ANTHROPIC_API_KEY=... npm test        # canlı smoke testi de koşar (yoksa atlanır)
 ```
 
-## ⚠️ Sandbox izolasyonu
+## Sandbox izolasyonu
 
-`LocalProcessSandbox` komutları host üzerinde normal bir çocuk süreç olarak çalıştırır. **Ağ izolasyonu, dosya sistemi izolasyonu ve kaynak sınırı yoktur**; tek koruma workspace'e yol hapsi ve süre limitidir. Bu yüzden yalnızca `fixtures/golden/` altındaki güvenilen projeler çalıştırılabilir ve arayüz keyfi proje yüklemesine izin vermez. Kullanıcı projesi kabul edilmeden önce izolasyonlu bir sandbox (Docker / E2B) zorunludur — bkz. `docs/PHASE_1A_PLAN.md` §5 ve §9.
+İki sağlayıcı vardır ve seçim otomatiktir:
 
-## Sırada ne var (Faz 1b)
+| Sağlayıcı | Güvenilmeyen kod | Kullanım |
+|---|---|---|
+| `DockerSandbox` | ✅ izole eder | Docker varsa **her zaman** tercih edilir |
+| `LocalProcessSandbox` | ❌ izole etmez | Yalnızca `fixtures/golden/` altındaki kendi fixture'larımız |
 
-Golden set'in 10 senaryoya çıkarılması ve gerçek modelle başarı oranı ölçümü, izolasyonlu sandbox, ardından GitHub App + server-side git + PR açma.
+Güvenilmeyen bir proje izolasyonsuz sağlayıcıya verilirse `UntrustedProjectError` fırlatılır — ve `trust` belirtilmezse proje **güvenilmez kabul edilir**, yani unutulan bir parametre izolasyonsuz çalıştırmaya düşmez.
+
+Docker sandbox'ı hazırlamak:
+
+```bash
+scripts/build-sandbox-image.sh          # registry tabanlı (normal ortam)
+scripts/build-sandbox-image.sh import   # kısıtlı ağ: host rootfs'inden üret
+```
+
+Container şu kısıtlarla koşar: ağ kapalı, salt-okunur rootfs, tüm capability'ler düşürülmüş, non-root kullanıcı, bellek/CPU/process/süre/çıktı limitleri, host env aktarımı yok, Docker socket yok. Workspace host'ta kalır ve git meta dizini container'a **mount edilmez** — böylece çalışan kod, kendi değişikliğinin ölçümünü kurcalayamaz.
+
+> **Docker bir güvenlik sınırı garantisi değildir.** Paylaşılan çekirdek, disk kotası eksikliği ve diğer kalan riskler `docs/PHASE_1B_PLAN.md` → **SECURITY LIMITATIONS** bölümünde dürüstçe listelenmiştir.
+
+## Sırada ne var
+
+Kullanıcı yükleme akışı (güvenli zip ingest), workspace disk kotası, ardından Faz 2 orkestrasyonu (Manager rolü + insan plan onay kapısı). Gerçek modelle golden eval ölçümü anahtar sağlandığı anda tek komut.

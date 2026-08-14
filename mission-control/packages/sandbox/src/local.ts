@@ -5,9 +5,13 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   PathEscapeError,
+  resolveLimits,
+  UntrustedProjectError,
+  type CreateSandboxOptions,
   type DiffStat,
   type ExecOptions,
   type ExecResult,
+  type ResourceLimits,
   type Sandbox,
   type SandboxProvider,
 } from "./types.js";
@@ -30,6 +34,7 @@ export class LocalProcessSandbox implements Sandbox {
   constructor(
     readonly id: string,
     readonly rootPath: string,
+    readonly limits: ResourceLimits = resolveLimits(),
   ) {}
 
   /** Model kaynaklı yolu workspace'e hapseder — traversal ve mutlak yol reddedilir. */
@@ -153,12 +158,21 @@ const ARTIFACT_EXCLUDES = [
 
 export class LocalSandboxProvider implements SandboxProvider {
   readonly kind = "local-process";
+  /** Bu sağlayıcı kodu izole ETMEZ; güvenilmeyen proje kabul edemez. */
+  readonly isolatesUntrustedCode = false;
 
   constructor(private readonly baseDir = tmpdir()) {}
 
-  async create(options: { missionId: string; sourceDir?: string }): Promise<Sandbox> {
+  async create(options: CreateSandboxOptions): Promise<Sandbox> {
+    // Güven seviyesi belirtilmemişse güvenilmez sayılır: unutulan bir
+    // parametre asla izolasyonsuz çalıştırmaya dönüşmemeli.
+    const trust = options.trust ?? "untrusted";
+    if (trust !== "trusted") {
+      throw new UntrustedProjectError(this.kind);
+    }
+
     const root = await mkdtemp(join(this.baseDir, `mc-${options.missionId.slice(0, 8)}-`));
-    const sandbox = new LocalProcessSandbox(randomUUID(), root);
+    const sandbox = new LocalProcessSandbox(randomUUID(), root, resolveLimits(options.limits));
 
     if (options.sourceDir) {
       await cp(options.sourceDir, root, { recursive: true });

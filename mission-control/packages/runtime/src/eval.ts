@@ -36,6 +36,8 @@ export interface ScenarioResult {
 export interface EvalReport {
   /** "mock" veya "live:<model>" — raporun anlamını belirleyen tek alan. */
   driver: string;
+  /** Hangi sandbox sağlayıcısıyla koşuldu (izolasyonlu mu değil mi). */
+  sandboxKind: string;
   startedAt: string;
   results: ScenarioResult[];
   summary: {
@@ -78,6 +80,10 @@ export async function runEvalSuite(options: RunEvalOptions): Promise<EvalReport>
         events,
         budgetUsd,
         maxRounds,
+        // Golden set bizim ürettiğimiz fixture'lardan oluşur; kullanıcı
+        // projesi değildir. Bu yüzden izolasyonsuz sağlayıcıyla da
+        // koşabilir (Docker'ın olmadığı CI ortamları için).
+        trust: "trusted",
       });
 
       const timeline = await events.list(run.mission.id);
@@ -136,6 +142,7 @@ export async function runEvalSuite(options: RunEvalOptions): Promise<EvalReport>
   const passed = results.filter((r) => r.ok).length;
   return {
     driver,
+    sandboxKind: sandboxes.kind,
     startedAt,
     results,
     summary: {
@@ -204,6 +211,7 @@ export function formatReport(report: EvalReport): string {
     `# Agent eval raporu`,
     ``,
     `- **Sürücü:** \`${report.driver}\``,
+    `- **Sandbox:** \`${report.sandboxKind}\``,
     `- **Tarih:** ${report.startedAt}`,
     `- **Başarı:** ${summary.passed}/${summary.total} (%${pct})`,
     `- **Toplam maliyet:** $${summary.totalCostUsd.toFixed(4)}`,

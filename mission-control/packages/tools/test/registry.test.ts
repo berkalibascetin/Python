@@ -6,7 +6,7 @@ const provider = new LocalSandboxProvider();
 const created: Sandbox[] = [];
 
 async function runtime(): Promise<{ rt: ToolRuntime; sandbox: Sandbox }> {
-  const sandbox = await provider.create({ missionId: "tools-test" });
+  const sandbox = await provider.create({ missionId: "tools-test", trust: "trusted" });
   created.push(sandbox);
   return { rt: new ToolRuntime(sandbox), sandbox };
 }

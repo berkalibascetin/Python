@@ -3,9 +3,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import { InMemoryEventStore } from "@mission-control/core";
-import { LocalSandboxProvider } from "@mission-control/sandbox";
 import { runMission } from "@mission-control/runtime";
-import { buildGateway, listProjects, modelId, resolveProjectDir, runMode } from "./config.js";
+import {
+  buildGateway,
+  listProjects,
+  modelId,
+  resolveProjectDir,
+  runMode,
+  selectSandbox,
+} from "./config.js";
 import { startDemoMission } from "./demoMission.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -13,7 +19,7 @@ const PUBLIC_DIR = join(__dirname, "..", "public");
 
 const store = new InMemoryEventStore();
 const gateway = buildGateway();
-const sandboxes = new LocalSandboxProvider();
+const sandbox = await selectSandbox();
 /** Bilinen mission id'leri — event uçları yalnızca bunlara yanıt verir. */
 const missions = new Set<string>();
 
@@ -24,10 +30,13 @@ app.get("/", async (_req, reply) => {
   reply.type("text/html").send(html);
 });
 
-/** Arayüzün modu dürüstçe gösterebilmesi için. */
+/** Arayüzün modu ve izolasyon durumunu dürüstçe gösterebilmesi için. */
 app.get("/config", async () => ({
   mode: runMode,
   model: modelId,
+  sandbox: sandbox.provider.kind,
+  isolated: sandbox.isolated,
+  ...(sandbox.reason ? { sandboxReason: sandbox.reason } : {}),
   projects: await listProjects(),
 }));
 
@@ -53,7 +62,12 @@ app.post("/missions", async (request, reply) => {
     goal,
     sourceDir,
     gateway,
-    sandboxes,
+    sandboxes: sandbox.provider,
+    // PROJECTS_ROOT altındakiler bizim golden fixture'larımızdır. İzolasyon
+    // yoksa yalnızca bunlar çalışabilir; kullanıcıdan gelen bir proje
+    // eklendiğinde `untrusted` geçilmeli ve izolasyonsuz sağlayıcı bunu
+    // reddetmelidir (Faz 1b sözleşmesi).
+    trust: sandbox.isolated ? "untrusted" : "trusted",
     events: withFixedId(store, missionId),
   }).catch((err) => app.log.error({ err }, "mission failed"));
 
@@ -108,7 +122,19 @@ function withFixedId(inner: InMemoryEventStore, missionId: string): InMemoryEven
 const port = Number(process.env.PORT ?? 3000);
 app
   .listen({ port, host: "0.0.0.0" })
-  .then(() => app.log.info({ mode: runMode, model: modelId }, "mission-control api ready"))
+  .then(() => {
+    app.log.info(
+      { mode: runMode, model: modelId, sandbox: sandbox.provider.kind, isolated: sandbox.isolated },
+      "mission-control api ready",
+    );
+    if (!sandbox.isolated) {
+      app.log.warn(
+        { reason: sandbox.reason },
+        "No isolating sandbox available — only bundled golden fixtures can run. " +
+          "Untrusted projects will be refused.",
+      );
+    }
+  })
   .catch((err) => {
     app.log.error(err);
     process.exit(1);

@@ -5,7 +5,7 @@ const provider = new LocalSandboxProvider();
 const created: Sandbox[] = [];
 
 async function makeSandbox(): Promise<Sandbox> {
-  const sandbox = await provider.create({ missionId: "test-mission" });
+  const sandbox = await provider.create({ missionId: "test-mission", trust: "trusted" });
   created.push(sandbox);
   return sandbox;
 }

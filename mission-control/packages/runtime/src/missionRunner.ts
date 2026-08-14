@@ -6,7 +6,7 @@ import {
   type Mission,
 } from "@mission-control/core";
 import type { ModelGateway } from "@mission-control/gateway";
-import type { SandboxProvider } from "@mission-control/sandbox";
+import type { SandboxProvider, TrustLevel } from "@mission-control/sandbox";
 import { ToolRuntime } from "@mission-control/tools";
 import { runAgentLoop, type AgentOutcome } from "./agentLoop.js";
 import { runVerification, type VerificationResult } from "./verification.js";
@@ -39,6 +39,12 @@ export interface MissionRunOptions {
   modelRef?: string;
   budgetUsd?: number;
   maxRounds?: number;
+  /**
+   * Projenin güven seviyesi. Belirtilmezse `untrusted` — yani izolasyon
+   * sağlamayan bir sandbox sağlayıcısı bu mission'ı reddeder. Yalnızca
+   * kaynağını bizim ürettiğimiz kod (golden fixture) `trusted` olabilir.
+   */
+  trust?: TrustLevel;
 }
 
 export interface MissionRunResult {
@@ -59,6 +65,7 @@ export async function runMission(options: MissionRunOptions): Promise<MissionRun
     modelRef = "developer-default",
     budgetUsd = 2,
     maxRounds = 12,
+    trust = "untrusted",
   } = options;
 
   let mission: Mission = {
@@ -80,7 +87,7 @@ export async function runMission(options: MissionRunOptions): Promise<MissionRun
     aiSummary: goal,
   });
 
-  const sandbox = await sandboxes.create({ missionId, sourceDir });
+  const sandbox = await sandboxes.create({ missionId, sourceDir, trust });
   try {
     // Faz 1a'da plan adımı yok: görev doğrudan Developer'a gider (Faz 2'de
     // Manager + insan onay kapısı araya girecek).
