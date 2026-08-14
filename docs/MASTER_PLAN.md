@@ -2,6 +2,7 @@
 
 > **Rol:** Chief Architect / Principal Engineer perspektifi
 > **Durum:** Plan dokümanı (kod yok). Bağımsız bir AI/insan tarafından incelenebilecek şekilde yazıldı.
+> **Sürüm:** v1.1 — revizyon (2026-08-14). Değişen bölümler `[REV]` etiketli; her değişikliğin kısa gerekçesi yerinde, toplu döküm sondaki **REVISION SUMMARY** bölümünde.
 
 ---
 
@@ -21,6 +22,7 @@
 | V4 | Model API fiyatları 12 ay içinde dramatik artmaz (tarihsel eğilim: düşüş) | Yüksek | Kredi ekonomisi yeniden kurulur |
 | V5 | Sandbox'ta kod çalıştırma (test dahil) makul maliyetle (<$0.05/dk) sağlanabilir | Yüksek | Fix/retest döngüsü pahalılaşır, ücretsiz katman küçülür |
 | V6 | Ekip küçük (1–3 kişi), MVP bütçesi sınırlı, süre ~4–6 ay | Varsayım | Roadmap ölçekleri değişir |
+| V7 `[REV]` | Kimi/Gemini'nin tool-use + structured-output kalitesi Reviewer/Explain rolleri için yeterli | Düşük — mini-eval ile test edilecek (§15.1) | 3. sağlayıcı deneyi ertelenir; ucuz-model COGS fırsatı kaybolur |
 
 **Verdict önizlemesi:** Yapılmaya değer, ama yalnızca (a) MVP acımasızca dar tutulursa, (b) V3 hipotezi ilk 8 haftada gerçek kullanıcı görevleriyle ölçülürse, (c) maliyet kontrolü birinci sınıf mimari bileşen olarak ilk günden kurulursa. Detaylı karar §21'de.
 
@@ -102,24 +104,45 @@ Team management, RBAC, audit log, BYOK, SSO, data isolation, retention kontrolle
 ## 4. Farklılaşma (nihai)
 
 1. **Görünür orkestrasyon:** Plan, görev dağılımı ve agent adımları kullanıcı-dilinde timeline olarak akar; kullanıcı istediği anda duraklatır/yönlendirir. (Devin'in "kapalı kutu" eleştirisinin tam tersi.)
-2. **Cross-model recovery:** Hatayı yapan modelden *farklı* bir model kök neden analizi yapar (çapraz kontrol → tek modelin kör noktası hipotezi). Bu, ölçülecek ana hipotezdir (V3); MVP'de A/B olarak (aynı model self-fix vs. çapraz model fix) enstrümante edilecek.
+2. **Cross-model recovery:** Hatayı yapan modelden *farklı* bir model kök neden analizi yapar (çapraz kontrol → tek modelin kör noktası hipotezi). Bu, ölçülecek ana hipotezdir (V3); resmi A/B deney protokolü §8.4'te — kanıtlanana kadar pazarlamada "iddia" statüsünde tutulur.
 3. **Güven + kontrol kapıları:** Yazma işlemleri (commit, PR) her zaman izlenebilir; otomatik-fix opsiyonel ve bütçe-sınırlı. "AI'a iş verdim ama neye mal olacağını ve ne yaptığını biliyorum."
 4. **Maliyet şeffaflığı:** Her görev ve her agent adımı için canlı maliyet sayacı. (Rakiplerde en çok şikayet edilen alanlardan biri; ucuz farklılaşma.)
 
 **Ne farklılaşma DEĞİL:** model sayısı, agent sayısı, "10+ agent şablonu", genel amaçlı otomasyon (Zapier-leşme).
 
+### 4.1 Moat analizi `[REV]`
+*(Revizyon gerekçesi: v1.0'daki "provider bağımsızlığı = tek-model devlerinin yapısal olarak kopyalayamayacağı özellik" iddiası fazla iddialıydı; bileşen bileşen yeniden değerlendirildi ve "moat" kelimesi yalnızca gerçekten savunulabilen aday için kullanılıyor.)*
+
+| Bileşen | Sınıf | Değerlendirme |
+|---|---|---|
+| Mission state modeli | Ürün avantajı | Kopyalanabilir; hafif geçiş maliyeti (kullanıcının mission geçmişi) yaratır, moat değil |
+| Multi-agent orchestration | Ürün avantajı | Framework'ler mekanizmayı komoditleştiriyor; fark yürütme kalitesinde, mekanizmada değil |
+| Cross-model recovery (mekanizma) | Ürün avantajı — kanıt bekliyor | Mekanizma kopyalanabilir; kalıcı değer ancak kanıt + biriken veriyle oluşur |
+| Human control gates | Ürün avantajı | UX kalıbı; kolayca kopyalanır |
+| Activity timeline (sistem-doğrulamalı iki katman, §7) | Güçlü ürün avantajı | Kopyalanabilir ama tek-model oyuncuların önceliği değil; "güvenilir beyan" markası inşa eder |
+| Cost transparency | Ürün avantajı | Ucuz ve etkili farklılaştırıcı; moat değil |
+| **Recovery/evaluation verisi** — hangi model çifti, hangi hata sınıfını, hangi başarı oranı ve maliyetle düzeltiyor (çapraz-sağlayıcı görev telemetrisi) | **Tek gerçek moat adayı** | Birikimli: kopyalamak zaman + kullanıcı hacmi ister; tek-model oyuncular yapısal olarak çapraz-sağlayıcı veri toplamaz. Bugün elimizde yok — *kazanılacak* bir moat, sahip olunan değil |
+
+**Provider bağımsızlığı hakkında düzeltilmiş iddia:** güçlü ürün avantajı, doğru stratejik konum ve veri-moat'ının önkoşuludur; ama kendi başına moat **değildir**. OpenRouter, model *erişiminin* komodite olduğunu kanıtlıyor; büyük oyuncular isterse rakip modelleri entegre edebilir — ortada yapısal imkânsızlık değil, teşvik uyumsuzluğu var. Bu bize bir **zaman penceresi** verir, kalıcı koruma değil.
+
 ---
 
 ## 5. MVP Kapsamı
 
-### 5.1 MVP'ye giren (7 özellik — üst sınır)
-1. **GitHub entegrasyonu (dar):** OAuth + tek repo bağlama, clone, branch, commit, PR açma. (GitHub App; §14.)
-2. **3 sabit rol:** Manager/Planner, Developer, Reviewer-Debugger. Roller konfigürasyonla tanımlı (system prompt + izinler + model ataması) — kod değişmeden 10+ role genişleyebilir, ama UI'da MVP'de sadece 3'ü var.
-3. **Mission çalıştırma:** Görev gir → plan onayı (insan kapısı) → uygulama → test → PR. Tam async, kullanıcı sekmeyi kapatabilir.
-4. **Activity Timeline:** İnsan-okunur olay akışı + her satırdan ham detaya (diff, log, model çağrısı) inilebilir "derinleş" görünümü.
-5. **Error detection + Explain:** Test/build hatası yakalanır; "Explain" tıklanınca Debugger agent yapılandırılmış kök neden raporu üretir (root cause, olası dosya:satır, güven skoru — güven skoru kalibre edilmemiş bir LLM tahmini olarak etiketlenir, "91%" gibi kesinlik iddiası UI'da "high/medium/low" olarak yumuşatılır).
-6. **Fix & Retest:** Tek tık ile fix görevi + otomatik retest; görev başına max N düzeltme turu (varsayılan 3) ve maliyet tavanı.
-7. **Model entegrasyonu (2 sağlayıcı + BYOK):** Anthropic + OpenAI doğrudan; kullanıcı kendi anahtarını da girebilir. Model Gateway soyutlaması ilk günden (§14.7).
+### 5.1 MVP'ye giren (7 özellik — üst sınır) `[REV: MoSCoW etiketleri + proje girişi genişletildi]`
+*(Revizyon gerekçesi: her özelliğin gerekliliği MUST/SHOULD/CAN-WAIT ile ayrıştırıldı; Faz 1a PoC'sinin ürettiği zip-upload girişi kalıcı özelliğe dönüştürüldü — §17.)*
+
+| # | Özellik | Öncelik | Not |
+|---|---|---|---|
+| 1 | **Proje girişi:** (a) zip/dizin yükleme, (b) GitHub App — OAuth, tek repo, clone, branch, commit, PR (§14) | (a) **MUST** (Faz 1a), (b) **MUST** (launch, Faz 1b) | GitHub launch için şart; upload girişi hem PoC hem GitHub'sız kullanıcı için kalıcı yol |
+| 2 | **Roller:** Manager/Planner + Developer + Debugger (Explain). Konfigürasyonla tanımlı (system prompt + izin + model) — kod değişmeden 10+ role genişler; UI'da MVP'de 3 rol | **MUST** | Reviewer'ın ayrı non-blocking diff-review adımı: **SHOULD** (yoksa da akış çalışır) |
+| 3 | **Async mission + insan plan-onay kapısı:** görev → plan onayı → uygulama → verification → teslim; kullanıcı sekmeyi kapatabilir | **MUST** | Tam otonomi bilinçli olarak yok |
+| 4 | **Activity Timeline (iki katman, §7):** sistem-doğrulamalı gerçekler + AI özeti | **MUST** | Ham detaya "derinleş" görünümü: **SHOULD** |
+| 5 | **Error detection + Explain:** verification hatası yakalanır; Debugger yapılandırılmış kök neden raporu üretir (güven skoru kalibre edilmemiş LLM tahmini olarak "high/medium/low" gösterilir) | **MUST** | Ürün hipotezinin kalbi |
+| 6 | **Fix & Retest:** tek tık fix + otomatik retest; max N tur (varsayılan 3) + maliyet tavanı | **MUST** | Limit enforcement'ın kendisi de MUST |
+| 7 | **Model entegrasyonu:** Anthropic + OpenAI doğrudan; Model Gateway soyutlaması ilk günden | **MUST** | BYOK: **SHOULD** (aktivasyonu bloklamaz; Free-katman ekonomisi için erken istenir). 3. sağlayıcı adapter'ı: **CAN WAIT** — deney bayrağı arkasında (§15.1) |
+
+Kural: mimari olarak mümkün olan hiçbir şey sırf mümkün diye MVP'ye girmez; her madde §5.3'teki bir metriğe hizmet etmek zorundadır.
 
 ### 5.2 MVP'ye GİRMEYEN (bilinçli olarak)
 - Business/Team özellikleri: SSO, RBAC, audit log UI, BYOK-kurumsal, on-prem.
@@ -135,8 +158,18 @@ Team management, RBAC, audit log, BYOK, SSO, data isolation, retention kontrolle
 ### 5.3 MVP başarı kriterleri (ölçülebilir)
 - Aktivasyon: kayıt → ilk başarılı PR ≤ 15 dk (medyan).
 - Görev başarı oranı: seçilmiş görev sınıfında (küçük bugfix, test ekleme, küçük refactor) ≥ %50 "kullanıcı PR'ı merge etti".
-- V3 ölçümü: çapraz-model fix vs self-fix başarı farkı için enstrümantasyon canlı.
-- Görev başına ortalama model maliyeti ≤ $1.50 (hedef; §19).
+- V3 ölçümü: çapraz-model fix vs self-fix başarı farkı için enstrümantasyon canlı (§8.4).
+- Görev başına ortalama model maliyeti ≤ $1.50 (hedef; §19 — initial assumption).
+
+### 5.4 Builder UX ilkesi — "Goal-oriented AI project workspace" `[REV]`
+*(Revizyon gerekçesi: v1.0 deneyimi örtük olarak "AI orchestration dashboard" gibi kurguluyordu; hedef kullanıcı — vibe coder, indie dev — agent orchestration kavramlarını bilmek zorunda olmamalı. Teknik mimari değişmedi; yalnızca sunum katmanı yeniden çerçevelendi.)*
+
+- **Ana ekran tek soru:** *"What do you want to accomplish?"* — kullanıcı hedefi yazar ("Fix the authentication problem"), projeyi seçer, başlatır.
+- **Varsayılan görünüm faz dilindedir:** `Planning → Building → Reviewing → Testing → Fixing → Done`. Agent/model/orchestration terminolojisi varsayılan ekranda yoktur; kartlar "Your AI team is testing the fix" dilinde konuşur.
+- **Tek zorunlu teknik temas:** plan onay kartı — sade dille: ne yapılacak, hangi dosyalara dokunulacak (özet), tahmini maliyet; Onayla / Düzenle.
+- **Advanced görünüm (opt-in, tek tık):** agent, model, tool çağrıları, token, maliyet kırılımı, diff, loglar, yapılandırılmış sonuç metadata'sı. §7'nin iki katmanı iki görünüme birebir oturur: basit görünüm = faz + AI özeti + kritik gerçekler (maliyet, test sonucu); advanced = tüm gerçekler + ham veri.
+- **Sonuç dili:** "PR hazır — incele ve merge et"; teknik olmayan kullanıcı için sadeleştirilmiş "değişiklikleri gör" diff görünümü.
+- Rol/model atamaları Settings → Advanced altında; varsayılanlara hiç dokunmadan tam akış çalışır.
 
 ---
 
@@ -160,13 +193,17 @@ Her adımda: token/maliyet sayacı güncellenir; tur limiti, süre limiti (göre
 
 ---
 
-## 7. Activity / Mission Timeline
+## 7. Activity / Mission Timeline `[REV: iki katmanlı güven modeli]`
+*(Revizyon gerekçesi: v1.0'da timeline büyük ölçüde agent'ın kendi beyanına dayanıyordu — "Authentication improved" diyen agent'a güvenmek zorundaydık. AI beyanı ile sistemin ölçtüğü gerçekler ayrıştırıldı; timeline'ın güvenilirliği artık modele değil platform ölçümüne dayanıyor.)*
 
-- **Veri modeli:** Timeline, ayrı bir sistem değil; Event System'deki olayların **kullanıcı-dili projeksiyonu**dur. Her event: `{id, mission_id, actor(type: agent|system|user, role, model), kind, summary, detail_ref, cost, ts, parent_id}`. `parent_id` ile hiyerarşi: mission → task → step.
-- **İki seviye görünüm:** (1) Özet akış ("Claude/Developer 14 dosya değiştirdi"), (2) tıklayınca derinleşme: diff, tool çağrıları, model istek/yanıt metadata'sı (prompt içeriği değil — §9 retention), test logları.
-- **Canlılık:** SSE ile push (WebSocket MVP'de gereksiz karmaşıklık; tek yönlü akış yeterli, kullanıcı komutları normal HTTP).
-- **Özetleme:** Agent adımlarının insan-dili özetini, adımı yapan agent'ın kendisi üretir (her tool-use turunda 1 cümlelik "status" alanı zorunlu — ekstra model çağrısı yok, aynı yanıtın parçası).
-- **Anti-hedef:** Ham log yığını göstermek. Ham veri her zaman *erişilebilir* ama asla *varsayılan* değil.
+- **Katman A — AI özeti (beyan):** Adımı yapan agent'ın 1 cümlelik insan-dili özeti (her tool-use turunda zorunlu "status" alanı — ekstra model çağrısı yok, aynı yanıtın parçası). UI'da "AI özeti" olarak etiketlenir; sistem bu metni doğrulamaz ve doğruymuş gibi sunmaz.
+- **Katman B — Sistem-doğrulamalı gerçekler (facts):** Tool Runtime, sandbox runner ve Model Gateway tarafından **ölçülür**; model bu alana yazamaz: değişen dosya sayısı, +/− satır (diff'ten hesaplanır), çalıştırılan komutlar + exit code'lar, süre, token/maliyet, verification sonuçları ("tests: 3 passed / 1 failed"), API hataları.
+- **Veri modeli:** `{id, mission_id, actor(type: agent|system|user, role, model), kind, ai_summary, facts{files_changed, loc_added, loc_removed, commands[], duration_ms, cost, tokens, verification{passed, failed}}, detail_ref, ts, parent_id}`. `facts` alanını yalnızca platform kodu yazar (şema düzeyinde ayrım — audit edilebilir). Hiyerarşi `parent_id` ile: mission → task → step.
+- **UI kuralı:** Gerçekler birincildir (rozet/chip); AI özeti açıklayıcı metindir. Örnek: agent "Authentication improved" derse kart aynı anda `14 files · +327/−81 · 3 commands · 4m 12s · $0.42 · tests 3/4` gösterir — kullanıcı beyan–gerçek uyumsuzluğunu tek bakışta görür.
+- **Uyumsuzluk rozeti (SHOULD, launch sonrası):** özet başarı iddia ederken facts başarısız verification gösteriyorsa kart otomatik uyarı işareti alır.
+- **İki seviye görünüm** (değişmedi, §5.4 ile hizalı): basit akış ↔ derinleşme (diff, tool çağrıları, model çağrı metadata'sı — prompt içeriği değil, §9 retention).
+- **Canlılık:** SSE ile push (değişmedi).
+- **Anti-hedef** (değişmedi): ham log yığını varsayılan değil; her zaman erişilebilir.
 
 ---
 
@@ -191,25 +228,39 @@ Hata kaynakları ve yakalama biçimi:
 - **Flaky test şüphesi:** Explain `is_flaky_suspect=true` derse sistem önce testi değişiklik olmadan 1 kez tekrar koşar (ucuz doğrulama), sonra fix'e gider.
 - **Auto-fix opsiyonel:** Varsayılan: Explain otomatik, Fix insan-onaylı. Kullanıcı "auto" moda alabilir; auto modda bile tur+bütçe limitleri mutlaktır.
 
+### 8.4 Cross-model recovery A/B deneyi — V3'ün resmi protokolü `[REV]`
+*(Revizyon gerekçesi: v1.0 "A/B olarak enstrümante edilecek" demekle yetiniyordu; en önemli ürün hipotezi kollara, metriklere ve önden taahhütlü karar kuralına bağlandı.)*
+
+- **Kol A (self-fix):** Hata → aynı Developer modeli, hata logu + Explain-eşdeğeri bağlamla kendi düzeltmesini yapar.
+- **Kol B (cross-model):** Hata → *farklı sağlayıcıdan* Debugger modeli yapılandırılmış kök neden raporu üretir (§8.2 şeması) → Developer bu raporla düzeltir.
+- **Atama:** Mission düzeyinde rastgele. İki ortamda koşar: (1) golden-repo hata seti (kontrollü, nightly, deterministik senaryolar), (2) beta kullanıcı mission'ları (opt-in, gerçek dağılım).
+- **Kol başına metrikler:** success rate (verification yeşil) · time-to-success · fix turu sayısı · token maliyeti · toplam COGS · regression oranı (düzeltmenin başka bir testi bozması) · kullanıcı kabulü / PR merge oranı.
+- **Önden taahhütlü karar kuralı:** B, success rate'te ≥10 puan iyileşme VEYA fix turlarında ≥%25 azalma sağlıyor **ve** maliyeti ≤1.3× ise → cross-model recovery ana farklılaştırıcı olarak korunur ve positioning'in merkezinde kalır. Bu eşikler tutmazsa → positioning'deki ağırlığı düşürülür: Explain "ikinci görüş" opsiyonuna iner, ürün ekseni observe+kontrol'e kayar (§1.3 pivot rezervi). Belirsiz ara sonuçta → deney farklı sağlayıcı çiftleriyle genişletilir (§15.1'deki 3. sağlayıcı bayrağının tetiklenme koşulu tam olarak budur).
+- **İstatistik dürüstlüğü:** golden set küçük olacağından (≤50 senaryo) sonuçları yön göstergesidir; nihai karar beta verisiyle verilir (hedef: kol başına ≥100 mission). Örneklem yetersizse sonuç "kanıtlanmadı" olarak raporlanır, "çürüdü" olarak değil.
+
 ---
 
 ## 9. Security & Privacy (security-by-design)
 
 > İlke: "Veri hiçbir yerde tutulmaz" **iddia edilmez**. Bunun yerine her veri sınıfı için nerede/ne kadar/neden tutulduğu tanımlanır ve kullanıcıya beyan edilir.
 
-### 9.1 Veri sınıflandırma ve retention matrisi
+### 9.1 Veri sınıflandırma ve retention politikası `[REV: sıkılaştırıldı]`
+*(Revizyon gerekçesi: v1.0'daki "geçici workspace cache, max 24h" gereksiz veri kalıcılığıydı ve gelecekteki privacy iddiasını zayıflatıyordu — MVP'den çıkarıldı. Matris WHAT/WHERE/WHY/HOW-LONG/WHO/WHEN-DELETED formatına geçirildi ve doğrulanabilir bir gizlilik iddiası hedefi tanımlandı. Tüm kalıcı depolar at-rest şifreli, tüm aktarım TLS — tablodan tekrar kaldırıldı.)*
 
-| Veri | Nerede | Şifreleme | Retention (varsayılan) | Not |
-|---|---|---|---|---|
-| Hesap/kimlik | Postgres | at-rest (disk) + TLS | Hesap ömrü | |
-| GitHub token'ları | Secrets store (KMS-şifreli, ayrı tablo/servis) | envelope encryption (KMS) | Hesap ömrü; bağlantı kesilince anında silme + token revoke | Uygulama loglarına asla yazılmaz; GitHub App kısa-ömürlü installation token tercih edilir (kalıcı PAT saklamaktan kaçınılır) |
-| Kullanıcı BYOK model anahtarları | Secrets store | envelope encryption | Kullanıcı silene kadar | Sadece server-side, model çağrısı anında decrypt |
-| Kaynak kod (repo klonu) | Sandbox ephemeral disk + geçici workspace cache | at-rest | **Mission bitince silinir**; cache max 24h | Kalıcı repo kopyası tutulmaz; gerektiğinde yeniden clone |
-| Diff'ler / PR içerikleri | Object storage | at-rest | Mission geçmişi olarak kullanıcı silene kadar (kullanıcıya görünür, silinebilir) | Timeline'ın "derinleş" verisi |
-| Prompt/yanıt tam metinleri | **Varsayılan: tutulmaz.** Debug opt-in ise object storage | at-rest | Opt-in: 7 gün | Timeline özet + metadata (model, token, süre, maliyet) yeterli |
-| Test/build logları | Object storage (kırpılmış) | at-rest | 30 gün | Loglar kod içerebilir → kod ile aynı hassasiyet sınıfı |
-| Event/audit kayıtları | Postgres (append-only) | at-rest | 90 gün (Business'ta konfigüre edilebilir) | İçerik değil metadata + özet |
-| Telemetri/metrics | Metrics store | — | 30–90 gün | İçeriksiz |
+| WHAT | WHERE | WHY | HOW LONG | WHO CAN ACCESS | WHEN DELETED |
+|---|---|---|---|---|---|
+| Hesap/kimlik | Postgres | Hizmet sunumu | Hesap ömrü | Kullanıcı; platform (destek, kısıtlı) | Hesap silme talebinde ≤30 gün |
+| GitHub token'ları | Secrets store (KMS envelope) | Repo erişimi | GitHub App installation token'ları kısa ömürlü (~1 saat); kalıcı PAT saklanmaz | Yalnızca server-side git servisi; uygulama loglarına asla | Bağlantı kesilince anında + GitHub tarafında revoke |
+| BYOK model anahtarları | Secrets store (KMS envelope) | Model çağrısı | Kullanıcı silene kadar | Yalnızca Model Gateway, çağrı anında decrypt | Kullanıcı sildiğinde anında |
+| **Raw source code (repo kopyası / çalışma kopyası)** | **Yalnızca ephemeral sandbox diski** | Görevin yürütülmesi | **Yalnızca mission süresi — kalıcı depolama ve cache YOK**; her mission yeniden clone/upload | Yalnızca o mission'ın sandbox'ı | Mission bitiminde sandbox imhasıyla |
+| Upload edilen proje arşivi (zip) | Object storage, geçici ingest alanı | Sandbox'a aktarım | Aktarım tamamlanınca; güvenlik payı max 24 saat | Yalnızca ingest servisi | Sandbox'a aktarım sonrası anında (en geç 24h otomatik) |
+| Ara agent context + tam prompt/yanıt metinleri | Yalnızca bellek/çağrı ömürlü; **kalıcı depolama yok** (opt-in debug modunda object storage) | Model çağrısının yürütülmesi; opt-in: hata ayıklama | Varsayılan: 0 (hiç yazılmaz); opt-in: 7 gün | Opt-in'de: kullanıcı + platform debug (kısıtlı) | Çağrı bitiminde; opt-in'de 7. gün otomatik |
+| Diff'ler / PR içerikleri / Explain raporları | Object storage | Timeline geçmişi — kullanıcının iş çıktısı | Kullanıcı silene kadar | Kullanıcı; platform (kısıtlı) | Kullanıcı mission'ı sildiğinde |
+| Verification (test/build) logları — kırpılmış | Object storage | Explain girdisi, geçmiş | 30 gün | Kullanıcı; platform (kısıtlı) | 30. gün otomatik; mission silmede anında (kod parçası içerebilir → kodla aynı hassasiyet sınıfı) |
+| Event/audit kayıtları (metadata + özet; içerik yok) | Postgres append-only | Timeline, audit | 90 gün (Business: konfigüre edilebilir) | Kullanıcı (kendi tenant'ı); platform | 90. gün otomatik |
+| Telemetri/metrics (içeriksiz) | Metrics store | Operasyon, birim ekonomi | 30–90 gün | Platform | Otomatik rotasyon |
+
+**Doğrulanabilir iddia hedefi:** *"Customer source code is not persistently stored by default."* Kapsam kesindir: tam repo/proje kopyaları hiçbir kalıcı depoda tutulmaz, yalnızca mission-ömürlü sandbox'ta yaşar; ara agent context ve tam prompt/yanıt metinleri varsayılan olarak hiç yazılmaz. **Açık istisna beyanı (iddianın dürüstlüğü için):** diff'ler, Explain raporları ve verification logları kod *parçaları* içerir — bunlar kullanıcının görünür iş çıktısıdır, kullanıcı tarafından silinebilir ve iddia metninde açıkça istisna olarak listelenir. "Veri hiçbir yerde tutulmaz" gibi teknik olarak kanıtlanamaz mutlak bir ifade hiçbir zaman kullanılmaz. **Kabul edilen trade-off:** cache'siz tasarımda her mission yeniden clone → büyük repolarda başlangıç gecikmesi ve bant genişliği maliyeti; MVP ölçeğinde kabul edilir. Opsiyonel cache ancak ileride *kullanıcı-onaylı, şifreli, kısa-TTL'li* olarak ve gerçek bir ihtiyaç kanıtlanırsa geri gelir.
 
 ### 9.2 Mimari kararlar
 - **Multi-tenancy:** MVP: paylaşımlı Postgres, her tabloda `tenant_id` (org) + `user_id`; tüm erişim repository-katmanında zorunlu tenant filtresi + Postgres **Row-Level Security** (savunma derinliği — uygulama bug'ı tek başına sızıntı yaratmasın). Business/Enterprise'da schema-per-tenant veya dedicated DB'ye evrilebilir; veri modeli bunu bloklamaz.
@@ -289,6 +340,18 @@ Hata kaynakları ve yakalama biçimi:
 ### 11.3 "Framework'süz orkestrasyon" kararının gerekçesi
 Orchestrator + Agent Runtime bu ürünün çekirdek IP'si ve farklılaşma yüzeyidir (timeline, limitler, recovery). Framework'ler (LangGraph/CrewAI) bu katmanı hızlandırır ama (a) event/observability modelini kendi biçimlerine zorlar, (b) Python'a kilitler, (c) API churn riski taşır. İhtiyacımız olan döngü ~birkaç yüz satırlık disiplinli koddur: model çağır → tool çağrılarını policy'den geçir → çalıştır → event yaz → tekrar. **Risk kabulü:** durable-execution (crash-recovery, uzun işler) alanını kendimiz çözmek zorundayız; bunun için her adım idempotent + state Postgres'te + iş kuyruğu retry'lı tasarlanır. Bu karmaşıklık yönetilemez hale gelirse Temporal'a geçiş planı hazırdır (adımlar zaten activity-benzeri yazılmış olacak).
 
+### 11.4 Çekirdek domain vs. Coding Pack ayrımı `[REV]`
+*(Revizyon gerekçesi: v1.0 mimarisi doğruydu ama core kavramlar coding terimleriyle iç içeydi; ürünün ileride kod-dışı proje workflow'larına genişleyebilmesi için ayrım açıkça çizildi. MVP kapsamı değişmedi — sadece isimlendirme ve arayüz disiplini.)*
+
+- **CORE (alan-bağımsız):** `Mission, Task, Agent(rol+izin+model), Project State, Tool, Event, Execution, Review, Recovery (Error→Explain→Fix), Budget/Limits`. Tüm core tablolar, event tipleri ve arayüzler bu terimlerle tanımlanır; çekirdek hiçbir yerde "repo", "PR", "build" bilmez.
+- **CODING PACK (MVP'deki ilk ve tek capability pack):** üç generic core arayüzünün coding implementasyonu:
+  - `WorkspaceProvider` → GitHub clone / zip upload (core için workspace soyut bir çalışma alanıdır)
+  - `VerificationRunner` → test/build/lint koşumu (core yalnızca `verification.run → pass/fail + rapor` görür)
+  - `DeliverablePublisher` → PR açma (core yalnızca `deliverable.published + ref` görür)
+  - Coding-özel tool'lar (`repo.read/write`, `shell.run`, `git.*`) Tool Registry'ye pack olarak kaydolur.
+- **Disiplin kuralları:** (1) core şemada coding terimi geçmez (örn. `artifacts.kind='diff'` bir pack *değeridir*, kolon/tablo adı değil); (2) timeline, limit, bütçe ve recovery mantığı pack'ten habersiz çalışır; (3) yeni bir pack eklemek core migration gerektirmemelidir.
+- **Maliyet ve sınır:** Bu ayrım ~%5–10'luk bir soyutlama vergisidir ve MVP'de ikinci bir pack **yazılmaz** (YAGNI) — yalnızca isimlendirme + arayüz disiplini uygulanır. Gelecek pack adayları: doküman/araştırma workflow'ları, operasyonel görevler ("real-life project workflows").
+
 ---
 
 ## 12. Agent Execution Modeli
@@ -358,9 +421,20 @@ Browser/computer-use, serbest internet erişimi, veritabanı bağlantıları, cl
 ## 15. Multi-Model / Provider Bağımsızlığı
 
 - **İlke:** Provider-independent agent architecture = (a) tek iç arayüz: `ModelGateway.complete({messages, tools, schema, budget, model_ref})`, (b) `model_ref` soyut ("developer-default" gibi rol-bazlı alias → konfig ile gerçek modele bağlanır), (c) yetenek matrisi (tool-use kalitesi, context limiti, structured-output desteği, maliyet) konfigde tutulur; kod modele değil yeteneğe koşullanır.
-- **MVP sağlayıcıları:** Anthropic (Developer/Reviewer varsayılanı) + OpenAI (Manager/Debugger varsayılanı) — çapraz-model recovery hipotezi için 2 sağlayıcı yeter. Kimi/Gemini adapter'ları faz 3 (Gemini muhtemelen önce: agresif fiyat/uzun context).
+- **MVP sağlayıcıları:** Anthropic (Developer/Reviewer varsayılanı) + OpenAI (Manager/Debugger varsayılanı) — çekirdek cross-model A/B deneyi (§8.4) için 2 sağlayıcı yeterli. Üçüncü sağlayıcı kararı: §15.1.
 - **OpenRouter kararı:** Tek entegrasyonla geniş katalog cazip; ancak (a) BYOK kullanıcıları kendi Anthropic/OpenAI anahtarını getirir → doğrudan adapter zaten gerekli, (b) kritik yol için araya ek bağımlılık/latency. Karar: doğrudan adapter'lar birincil, OpenRouter "uzun kuyruk modeller" için opsiyonel ek adapter.
 - **Fallback:** Provider 5xx/429'da aynı yetenek sınıfındaki yedek modele otomatik geçiş (kullanıcıya timeline'da beyan edilir — sessiz model değişimi güven sözleşmesine aykırı).
+
+### 15.1 Üçüncü sağlayıcı kararı (Kimi) `[REV]`
+*(Revizyon gerekçesi: v1.0 "Kimi/Gemini faz 3" diyordu ama gerekçelendirmiyordu; "üçüncü AI olsun" tuzağına düşmeden üç seçenek maliyet, hipotez ölçümü, çeşitlilik, karmaşıklık ve MVP süresi eksenlerinde karşılaştırıldı.)*
+
+| Seçenek | Maliyet / geliştirme karmaşıklığı | Cross-model hipotezinin ölçümü | MVP süresi | Değerlendirme |
+|---|---|---|---|---|
+| **A)** Yalnızca OpenAI + Anthropic | En düşük: 2 adapter, tek deney çifti | Çekirdek soruyu ("farklı model mi daha iyi düzeltir?") **tek çiftle cevaplar — yeterli** | En hızlı | Güvenli taban; tek eksiği çift-genelliğini test edememek |
+| **B)** + Kimi launch'ta | +1 adapter (~1–2 hafta: entegrasyon + tool-use/structured-output kalite ayarı + prompt uyarlama) ve sıralı deney çifti sayısı 2→6'ya patlar; Kimi'nin agentic tool-use kalitesi **doğrulanmamış varsayım (V7)**; sürekli kalite bakım yükü | Çift-genelliği testine imkân verir ama MVP örneklemi 6 çifti istatistiksel olarak besleyemez → gürültü | +1–2 hafta ve odak kaybı | Erken: model çeşitliliği bugün veri üretmez, maliyet üretir |
+| **C)** Mimari destekler, deney bayrağıyla etkinleştirilir | Adapter arayüzü zaten 2 sağlayıcıyla kanıtlanır; 3.'sü marjinal iş, ihtiyaç anında | Faz 3'te çekirdek A/B ilk sinyali verdikten **sonra**: (i) fayda varsa çift-genelliği testi, (ii) Kimi'nin agresif fiyatıyla "ucuz Explain/Reviewer" COGS deneyi | Launch'ı geciktirmez | ✅ **Seçilen** |
+
+**Karar: C.** Kimi (veya Gemini — hangisinin önce ekleneceği Faz 3'te küçük bir tool-use mini-eval'iyle seçilir) launch'taki kullanıcıya-açık model listesinde yer almaz; deney bayrağı arkasında, golden-repo eval'inden geçerek etkinleşir. Kimi'nin gerçek cazibesi "üçüncü AI" değildir: (a) cross-model faydasının sağlayıcı-çiftine özgü olup olmadığını test etmek, (b) düşük fiyatıyla Explain/Review adımlarının COGS'unu düşürme potansiyeli. İki gerekçe de ancak çekirdek A/B (§8.4) pozitif ya da belirsiz sinyal verirse anlamlıdır — tetikleme koşulu oraya bağlanmıştır.
 
 ---
 
@@ -391,11 +465,17 @@ Hedef: Karar kayıtları (bu doküman + ADR'ler), monorepo iskeleti, CI, deploy 
 Tamamlanma: "Merhaba dünya mission'ı" — sahte agent bir event yazar, timeline'da canlı görünür.
 Risk: altyapı yak-shaving'e dalmak → sınır: hafta 3 sonunda kesilir.
 
-**Faz 1 — Tek Agent Dikeyi (4–5 hafta)**
-Hedef: GitHub App + clone→sandbox→Developer agent→patch→test→PR tam dikeyi, tek agent'la.
-Bağımlılık: Faz 0. İçerik: Model Gateway (Anthropic), tool runtime + izinler, sandbox entegrasyonu, bütçe/timeout enforcement v1.
-Tamamlanma: Golden repo'daki basit bug, uçtan uca PR'a dönüyor; maliyet kaydı doğru.
-Risk: sandbox+git entegrasyon sürprizleri (en yüksek belirsizlikli faz).
+**Faz 1a — Çekirdek Agent PoC, GitHub'sız (3 hafta)** `[REV]`
+*(Revizyon gerekçesi: en riskli bileşen — agent runtime — izole edildi; GitHub auth/izin problemlerinin "agent görevi tamamlayabiliyor mu?" sorusunun cevabını maskelemesi önlendi. Upload yolu atılmıyor: §5.1'deki kalıcı proje-giriş özelliğine dönüşüyor.)*
+Hedef: **"Agent bir görevi baştan sona gerçekten tamamlayabiliyor mu, hangi maliyetle?"** — zip/local proje → sandbox → Developer agent → patch → verification (test) → diff UI'da.
+Bağımlılık: Faz 0. İçerik: Model Gateway (Anthropic), tool runtime + izinler, sandbox entegrasyonu, bütçe/timeout enforcement v1, zip-upload girişi, §19 maliyet metriklerinin enstrümantasyonu.
+Tamamlanma: Golden projedeki basit bug upload→diff akışıyla düzeltiliyor; maliyet kaydı doğru; görev başarı/başarısızlık ölçümü akıyor.
+Risk: sandbox entegrasyon sürprizleri (en yüksek belirsizlikli faz — bilinçli olarak öne alındı).
+
+**Faz 1b — GitHub Dikeyi (2 hafta)** `[REV]`
+Hedef: GitHub App + server-side clone/push (token sandbox'a girmez) + PR açılışı; 1a akışının GitHub kaynaklı projeyle çalışması.
+Tamamlanma: Golden repo'daki bug uçtan uca PR'a dönüyor.
+Not (hızlandırma değerlendirmesi): 1a+1b toplamı eski Faz 1'den nominal ~1 hafta uzun; karşılığında en büyük teknik belirsizlik 3. haftada (5. hafta yerine) cevaplanıyor, agent-runtime başarısızlığı erken yakalanırsa GitHub işine hiç girilmeden pivot edilebiliyor. Net: takvim riski düşer — kabul.
 
 **Faz 2 — Orkestrasyon: 3 Agent (3–4 hafta)**
 Hedef: Manager plan üretimi + insan onay kapısı + task dağıtımı; Reviewer diff-review; OpenAI adapter; rol-model konfigürasyonu.
@@ -403,7 +483,7 @@ Tamamlanma: Referans akış (§6) 1–10 adımlarıyla çalışıyor.
 Risk: plan kalitesi düşükse akış anlamsızlaşır → plan şeması + eval erken kurulur.
 
 **Faz 3 — Recovery & Observability cilası (3–4 hafta)**
-Hedef: Explain (yapılandırılmış rapor) + Fix/Retest + thrashing tespiti + timeline derinleşme görünümleri + maliyet sayacı UI; V3 A/B enstrümantasyonu.
+Hedef: Explain (yapılandırılmış rapor) + Fix/Retest + thrashing tespiti + timeline derinleşme görünümleri + maliyet sayacı UI; §8.4 A/B deneyinin canlıya alınması; A/B sonucuna göre 3. sağlayıcı deney bayrağının (§15.1) değerlendirilmesi.
 Tamamlanma: Hata senaryolu golden repo'larda Error→Explain→Fix döngüsü ≥%40 başarıyla dönüyor; tüm limitler test edilmiş.
 
 **Faz 4 — Builder Launch (3 hafta + sürekli)**
@@ -427,7 +507,10 @@ Agent execution kontrolleri → §12; tool/sandbox → §14. (Numaralandırma, t
 
 ---
 
-## 19. Cost Model
+## 19. Cost Model — INITIAL ASSUMPTIONS `[REV]`
+*(Revizyon gerekçesi: v1.0'daki rakamlar tahmin statüsündeydi ama yeterince açık işaretlenmemişti; tüm sayılar "initial assumption" olarak damgalandı, ölçülecek metrik listesi ve 4 kullanıcı senaryosu eklendi, fiyatlama kararı gerçek veriye ertelendi.)*
+
+> **Bu bölümdeki TÜM sayılar başlangıç varsayımıdır; Faz 1a'dan itibaren gerçek ölçümle değiştirilir. Fiyatlama bu ölçümlerden önce kesinleştirilmez.**
 
 > **Varsayımlar (fiyatlar değişkendir; launch öncesi güncellenir):** Frontier model ~$3/M input + $15/M output token; orta sınıf model ~$0.25–1/M input; sandbox ~$0.03–0.05/CPU-saat-eşdeğeri dakika bazlı; storage/egress ihmal seviyesi. Prompt caching ile tekrar eden bağlam (repo haritası, plan) %50–90 indirimli — mimaride caching birinci sınıf varsayım.
 
@@ -442,7 +525,26 @@ Agent execution kontrolleri → §12; tool/sandbox → §14. (Numaralandırma, t
 | Storage/infra payı (kullanıcı başına amorti) | | ~$1–2 |
 | **Toplam COGS** | | **~$20–40/ay** (caching + kısmi orta-sınıf model kullanımıyla hedef: **$15–25**) |
 
-**Marj mantığı:** Free: ~5 task/ay tavan (≈$4–6 COGS, CAC sayılır) + BYOK ile model maliyeti $0'a düşer → Free sürdürülebilir. Pro ~$40–60 bandında konumlanırsa (kesinleştirilmedi) 20-task kullanıcıda %40–65 brüt marj; kredi aşımı satışı marjı korur. Business: seat başına kullanım benzer ama fiyat 2–3×, marj %70+. **Kırılganlık:** görev başına tur sayısı beklenenin 2×'i çıkarsa marj erir → tur limitleri ve caching sadece güvenlik değil, birim ekonominin kendisidir.
+**Marj mantığı (initial assumption):** Free: ~5 task/ay tavan (≈$4–6 COGS, CAC sayılır) + BYOK ile model maliyeti $0'a düşer → Free sürdürülebilir. Pro ~$40–60 bandında konumlanırsa (kesinleştirilmedi) 20-task kullanıcıda %40–65 brüt marj; kredi aşımı satışı marjı korur. Business: seat başına kullanım benzer ama fiyat 2–3×, marj %70+. **Kırılganlık:** görev başına tur sayısı beklenenin 2×'i çıkarsa marj erir → tur limitleri ve caching sadece güvenlik değil, birim ekonominin kendisidir.
+
+### 19.1 Ölçülecek metrikler (Faz 1a'dan itibaren enstrümante) `[REV]`
+Fiyatlama kararının önkoşulu olan metrik seti:
+- cost per mission · cost per **successful** mission (başarısız mission'ların COGS'u başarılılara yüklenir: başarı oranı %50 ise başarılı-PR başına gerçek maliyet ≈ 2× ortalama mission maliyeti)
+- task başına ortalama model çağrısı sayısı · ortalama fix turu sayısı
+- rol bazında ortalama input/output token
+- sandbox maliyeti / mission · başarısız mission'ların toplam maliyeti · başarılı PR başına maliyet
+- aktif kullanıcı başına aylık COGS
+
+### 19.2 Kullanıcı senaryoları (initial assumptions) `[REV]`
+
+| Senaryo | Profil | Aylık COGS tahmini |
+|---|---|---|
+| Light | 5 basit task, kısa mission'lar | ~$3–8 |
+| Normal | 20 task (yukarıdaki hesap) | ~$15–40 (hedef $15–25) |
+| Heavy | 60 task, uzun mission'lar, yüksek fix-turu oranı | ~$60–150 |
+| Runaway / failure | Limitsiz tek mission $20+'a koşabilir. §12 devre kesicilerle: mission başına tavan (varsayılan ~$5) × eşzamanlı mission limiti = kullanıcı başına maksimum anlık zarar **tasarım gereği sınırlı** | Sınırlı (by design) |
+
+**Fiyatlama kararı:** Pro/kredi fiyatları bu doküman kapsamında kesinleştirilmez. Faz 4 beta'sından min. 4 haftalık gerçek kullanım verisi (§19.1 metrikleri) gelmeden fiyat sabitlenmez; kredi kuru bu veriyle COGS'a endekslenir.
 
 ---
 
@@ -475,11 +577,11 @@ Agent execution kontrolleri → §12; tool/sandbox → §14. (Numaralandırma, t
 **PRODUCT VERDICT**
 Yapılmaya değer — **şartlı**. Boşluk gerçek (görünür, çoklu-model, recovery-odaklı mission control tüketici ürünü yok), ama iki ölümcül belirsizlik var: agent görev-başarı oranı (R1) ve cross-model recovery hipotezi (V3/R2). Plan bu ikisini ilk 3 fazda ölçülebilir kılıyor; 4. fazın sonunda veriler zayıfsa observe+kontrol eksenine pivot net biçimde tanımlı. "Çoklu-AI erişimi" olarak asla konumlandırılmamalı.
 
-**MVP**
-§5.1'deki 7 özellik: GitHub App entegrasyonu, 3 konfigüre-rol (Manager/Developer/Reviewer-Debugger), insan-onaylı plan ile async mission, timeline (özet+derinleşme), hata yakalama+Explain, Fix&Retest (limitli), 2 sağlayıcı + BYOK. Tam otonomi yok, auto-merge yok, 4+ agent yok.
+**MVP** `[REV]`
+§5.1'deki MoSCoW-etiketli 7 özellik: proje girişi (zip upload + GitHub App/PR), Manager+Developer+Debugger rolleri (Reviewer diff-review: SHOULD), insan-onaylı async mission, iki-katmanlı timeline (sistem-doğrulamalı facts katmanı MUST), hata yakalama+Explain, limitli Fix&Retest, Anthropic+OpenAI (BYOK: SHOULD; 3. sağlayıcı: deney bayrağı, §15.1). UX: goal-oriented workspace — agent kavramları advanced görünümde (§5.4). Tam otonomi yok, auto-merge yok, 4+ agent yok.
 
-**DIFFERENTIATION**
-(1) Görünür ve müdahale-edilebilir orkestrasyon (kapalı-kutu otonom rakiplerin tersi), (2) çapraz-model Error→Explain→Fix döngüsü birinci sınıf UI nesnesi olarak, (3) maliyet şeffaflığı + sert bütçe kapıları, (4) provider-tarafsızlık (tek-model devlerinin yapısal olarak kopyalayamayacağı tek özellik). Model sayısı ve agent sayısı farklılaşma değildir.
+**DIFFERENTIATION** `[REV]`
+(1) Görünür ve müdahale-edilebilir orkestrasyon (kapalı-kutu otonom rakiplerin tersi), (2) çapraz-model Error→Explain→Fix döngüsü birinci sınıf UI nesnesi olarak — §8.4 deneyiyle kanıtlanana kadar "iddia" statüsünde, (3) sistem-doğrulamalı timeline: AI beyanı ile ölçülmüş gerçek ayrımı (§7), (4) maliyet şeffaflığı + sert bütçe kapıları, (5) provider-bağımsızlık — güçlü avantaj ve zaman penceresi, ama moat değil. Tek moat *adayı*: zamanla birikecek çapraz-sağlayıcı recovery/eval verisi (§4.1) — bugün mevcut değil, kazanılması gerekiyor. Model sayısı ve agent sayısı farklılaşma değildir.
 
 **TECHNICAL FEASIBILITY**
 Yapılabilir. Hiçbir bileşen araştırma-seviyesi değil; OpenHands/Claude Code benzerleri fizibiliteyi kanıtlıyor. Zorluk icat değil **disiplin**: idempotent orkestrasyon, limit enforcement, izolasyon. En belirsiz mühendislik alanı sandbox+git+server-side-token akışı (Faz 1'in odağı olması bu yüzden).
@@ -493,11 +595,45 @@ Tek-model devlerinin (Cursor, Claude Code, Copilot) dağıtım gücüyle "yeteri
 **RECOMMENDED STACK**
 Next.js + TypeScript (FE) · Fastify + TypeScript (API) · in-house ince Orchestrator/Agent-loop (framework'süz; Temporal'a geçiş yolu açık) · Postgres 16 (+RLS, event tablosu) · Redis + BullMQ · S3/R2 · E2B (sandbox, soyut arayüz arkasında) · in-house Model Gateway (Anthropic + OpenAI adapter, BYOK; OpenRouter opsiyonel adapter) · GitHub App · OpenTelemetry + Sentry + Grafana Cloud · Deploy: Fly.io/Render → ileride AWS.
 
-**DEVELOPMENT ORDER**
-1) Faz 0: iskelet + event/SSE/timeline temeli → 2) Faz 1: **tek-agent dikey dilim** (GitHub→sandbox→patch→test→PR) — her şeyden önce bu → 3) Faz 2: Manager+Reviewer orkestrasyonu + plan kapısı → 4) Faz 3: Explain/Fix/Retest + limit sertleştirme + eval → 5) Faz 4: faturalama+onboarding+beta launch → 6) veriye göre Faz 5/6. İlke: dikey dilim bitmeden yatay genişleme yasak.
+**DEVELOPMENT ORDER** `[REV]`
+1) Faz 0: iskelet + event/SSE/timeline temeli → 2) Faz 1a: **GitHub'sız çekirdek agent dikeyi** (upload→sandbox→patch→verification→diff) — her şeyden önce bu; "agent görevi tamamlayabiliyor mu?" sorusu GitHub gürültüsü olmadan cevaplanır → 3) Faz 1b: GitHub App + server-side git + PR → 4) Faz 2: Manager+Reviewer orkestrasyonu + plan kapısı → 5) Faz 3: Explain/Fix/Retest + §8.4 A/B + limit sertleştirme + eval → 6) Faz 4: faturalama+onboarding+beta launch → 7) veriye göre Faz 5/6. İlke: dikey dilim bitmeden yatay genişleme yasak.
 
 **WHAT NOT TO BUILD (şimdilik kesinlikle)**
 Özel agent tanımlama/marketplace · 4+ agent rolü · tam otonom mod ve auto-merge · browser/computer-use · paralel-yazan agent'lar (worktree orkestrasyonu) · GitLab/Jira/Slack entegrasyonları · kendi eval/prompt-yönetim ürünü · public API/SDK · akıllı otomatik model routing · mobil · on-prem/enterprise güvenlik paketi (Faz 6'ya kadar) · kendi Firecracker filosu · chat-first genel asistan arayüzü.
+
+---
+
+## REVISION SUMMARY (v1.0 → v1.1)
+
+**1. Ne değişti?**
+- **§15.1 — Üçüncü sağlayıcı (Kimi):** Seçenek C seçildi: mimari 3. sağlayıcıyı destekler, launch'ta kullanıcıya kapalı, §8.4 A/B sonucuna bağlı deney bayrağıyla etkinleşir.
+- **§4.1 — Moat analizi:** "Provider bağımsızlığı = yapısal moat" iddiası geri çekildi; bileşen-bazlı analiz eklendi. Tek moat adayı: çapraz-sağlayıcı recovery/eval verisi (kanıtlanmamış, kazanılacak).
+- **§7 — Timeline:** İki katmana ayrıldı: AI özeti (beyan, etiketli) vs sistem-doğrulamalı `facts` (yalnızca platform kodu yazar: dosya/satır/komut/süre/maliyet/test sonuçları).
+- **§11.4 — Core ↔ Coding Pack:** Alan-bağımsız çekirdek (Mission/Task/Agent/State/Tool/Event/Execution/Review/Recovery/Budget) ile coding-özel katman (`WorkspaceProvider` / `VerificationRunner` / `DeliverablePublisher` + coding tool'ları) ayrıştırıldı; ikinci pack MVP'de yazılmaz.
+- **§9.1 — Retention:** Matris WHAT/WHERE/WHY/HOW-LONG/WHO/WHEN-DELETED formatına geçti; 24h workspace cache MVP'den çıkarıldı (her mission yeniden clone); ara agent context + tam prompt/yanıt varsayılan olarak hiç yazılmıyor; *"Customer source code is not persistently stored by default"* doğrulanabilir iddia hedefi (istisnaları açıkça beyan edilerek) tanımlandı.
+- **§5.4 — UX:** "AI orchestration dashboard" çerçevesi "goal-oriented AI project workspace"e çevrildi: tek soru + faz dili varsayılan, agent/model/token detayları opt-in advanced görünümde.
+- **§17 — Roadmap:** Faz 1, **Faz 1a** (GitHub'sız PoC: upload→sandbox→agent→verification→diff, 3 hafta) + **Faz 1b** (GitHub+PR, 2 hafta) olarak bölündü; upload girişi kalıcı özellik oldu.
+- **§19 — Cost model:** Tüm sayılar "initial assumption" damgalandı; §19.1 ölçüm metrikleri ve §19.2 dört kullanıcı senaryosu (light/normal/heavy/runaway) eklendi; fiyatlama beta verisine (min. 4 hafta) ertelendi.
+- **§8.4 — A/B deneyi:** Cross-model recovery hipotezi resmi protokole bağlandı: kollar, 7 metrik, önden taahhütlü karar kuralı, istatistik dürüstlüğü notu.
+- **§5.1 — MVP:** 7 özellik MUST/SHOULD/CAN-WAIT etiketlendi.
+
+**2. Neden değişti?** (madde sırasıyla, tek cümle)
+Kimi'nin "üçüncü AI olsun" gerekçesi geçersizdi — deney ve COGS gerekçesine bağlandı · moat iddiası savunulamıyordu, güvenilirlik için geri çekildi · agent beyanına dayalı timeline güven sorunu yaratıyordu · core'un coding'e kilitlenmesi gelecekteki genişlemeyi kapatıyordu · gereksiz veri kalıcılığı (cache) gelecekteki privacy iddiasını zayıflatıyordu · hedef kullanıcı agent orchestration kavramı bilmek zorunda değil · GitHub karmaşıklığı en kritik riski (agent runtime) maskeleyebilirdi · maliyet rakamları ölçülmemiş varsayımdı ve öyle etiketlenmeliydi · ana ürün hipotezi protokolsüz test edilemezdi · MVP disiplini önceliklendirme netliği gerektiriyordu.
+
+**3. Aynı kalan kararlar:**
+Genel positioning (Orchestrate/Observe/Recover + pivot rezervi) · 3-rol MVP'si · GitHub'ın MVP launch hedefi olması · framework'süz ince orchestrator + event-sourcing hibrit state · TS/Fastify/Next.js/Postgres/Redis/BullMQ/E2B stack'i · tool-katmanı izin modeli ve tüm devre kesiciler · sıralı yazma (paralel agent yok) · security-by-design ilkeleri ve tenant izolasyonu · business model yapısı (Builder/Business + kredi) · risk listesi ve mitigasyonları · rakip analizi.
+
+**4. Hâlâ doğrulanmayı bekleyen kararlar:**
+V3: cross-model recovery gerçek fayda sağlıyor mu (§8.4) · V1/V2: builder segmentinin koordinasyon acısı ve süreci izleme isteği · R1: agent görev-başarı oranının satılabilir seviyede olması · V7: Kimi/Gemini tool-use kalitesi · V5 + §19'un tüm birim maliyetleri · E2B vs Modal sandbox seçimi.
+
+**5. MVP'nin yeni sınırları:**
+**MUST:** upload+GitHub proje girişi, Manager+Developer+Debugger, plan-onay kapılı async mission, iki-katmanlı timeline (facts katmanı), Explain, limitli Fix&Retest, Anthropic+OpenAI. **SHOULD:** Reviewer diff-review, BYOK, ham-veri derinleşme görünümü, uyumsuzluk rozeti. **CAN WAIT:** 3. sağlayıcı (deney bayrağı) + §5.2'deki tüm hariç-tutulanlar (değişmedi).
+
+**6. En önemli 3 deney:**
+(1) **Faz 1a PoC** — "Agent bir görevi uçtan uca tamamlayabiliyor mu, hangi maliyet ve başarı oranıyla?" (ürünün varlık koşulu). (2) **§8.4 A/B** — "Cross-model recovery, self-fix'ten ölçülebilir şekilde iyi mi?" (ana farklılaşma iddiası). (3) **Faz 4 beta** — "Kayıt→ilk başarılı sonuç ≤15 dk ve kullanıcı başına COGS tahmin bandında mı?" (aktivasyon + birim ekonomi).
+
+**7. Kodlamaya başlamadan önce çözülmesi gerekenler:**
+Sandbox sağlayıcısı seçimi (E2B vs Modal: fiyat, ağ-policy/allowlist yeteneği, limitler — küçük teknik spike ile) · server-side git akışının tasarım detayı (token'ın sandbox'a asla girmemesi; upload/download vs tek-kullanımlık token) · event şemasının v1 sözleşmesi (`facts`/`ai_summary` ayrımı dahil — sonradan değiştirmek pahalı) · golden-repo test setinin ilk 10 senaryosu (Faz 1a'nın ölçüm zemini) · Explain rapor şemasının v1'i · kredi biriminin iç muhasebe tanımı · Faz 1a "başarı" eşiğinin önden tanımı (hangi başarı oranı devam kararı verdirir).
 
 ---
 
