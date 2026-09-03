@@ -1,0 +1,10 @@
+python-binance==1.0.19
+pandas==2.2.2
+numpy==1.26.4
+ta==0.11.0
+requests==2.32.3
+feedparser==6.0.11
+textblob==0.18.0
+scikit-learn==1.5.1
+schedule==1.2.2
+python-dotenv==1.0.1
